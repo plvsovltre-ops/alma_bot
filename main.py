@@ -16,7 +16,7 @@ PROJECT_PATH = "./project"
 INCIDENTS_FILE = "Инцидент.gpkg" 
 PHOTOS_FILE = "photos.gpkg"
 
-# Ключевые слова для поиска файлов с садами
+# Ключевые слова для поиска файлов
 GARDEN_KEYWORDS = ["сады", "orchards", "защищенные", "проверке", "возвращенный"]
 
 def get_env(name):
@@ -106,7 +106,7 @@ def main():
     new_recs = incidents[incidents['is_sent'] == 0]
     if new_recs.empty: print("✅ Новых данных нет."); return
 
-    # Собираем пути к файлам садов (не открываем их все сразу)
+    # Собираем пути к файлам садов
     garden_files = []
     for f in glob.glob(f"{PROJECT_PATH}/*.gpkg"):
         if os.path.basename(f) not in [INCIDENTS_FILE, PHOTOS_FILE]:
@@ -140,6 +140,7 @@ def main():
         cad_id = "Кадастровый номер не установлен"
         
         # Создаем точку геометрии для проверки
+        # Важно: берем геометрию напрямую из строки
         point_geom = row.geometry
         
         # Пробегаем по файлам садов
@@ -149,7 +150,6 @@ def main():
                 temp_gdf = gpd.read_file(g_file).to_crs("EPSG:4326")
                 
                 # Ищем полигон, содержащий точку
-                # contains - строго внутри, intersects - касается или внутри
                 match = temp_gdf[temp_gdf.contains(point_geom)]
                 
                 if not match.empty:
@@ -187,4 +187,12 @@ def main():
 
         incidents.at[idx, 'cadastre_id'] = cad_id
         incidents.at[idx, 'ai_complaint'] = text
-        incidents.at[idx, '
+        incidents.at[idx, 'is_sent'] = 1
+
+    # Сохраняем ТОЛЬКО Инциденты (сады не трогаем)
+    incidents.to_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE), driver="GPKG")
+    mc.push_project(PROJECT_PATH)
+    print("💾 Дело закрыто. Синхронизация завершена.")
+
+if __name__ == "__main__":
+    main()
