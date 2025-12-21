@@ -17,7 +17,6 @@ PROJECT_PATH = "./project"
 INCIDENTS_FILE = "Инцидент.gpkg" 
 PHOTOS_FILE = "photos.gpkg"
 LAWS_FOLDER = "laws"
-
 GARDEN_KEYWORDS = ["сады", "orchards", "защищенные", "проверке", "возвращенный"]
 
 def get_env(name):
@@ -26,51 +25,26 @@ def get_env(name):
     return val
 
 def load_knowledge_base():
-    """Читает базу законов."""
     full_text = ""
-    # Ищем все файлы .txt и сортируем их
     files = sorted(glob.glob(os.path.join(LAWS_FOLDER, "*.txt")))
-    
-    if not files:
-        return "База законов пуста."
-
+    if not files: return "База законов пуста."
     print(f"📚 Загрузка базы ({len(files)} файлов)...")
     for f_path in files:
         try:
             with open(f_path, 'r', encoding='utf-8') as f:
-                full_text += f"\n\n--- ДОКУМЕНТ: {os.path.basename(f_path)} ---\n"
-                full_text += f.read()
-        except Exception as e:
-            print(f"   ❌ Ошибка чтения {f_path}: {e}")
-            
+                full_text += f"\n\n--- ДОКУМЕНТ: {os.path.basename(f_path)} ---\n" + f.read()
+        except: pass
     return full_text
 
 def get_legal_prompt(inc_type, desc, cad_id, coords, legal_db):
     return f"""
-    РОЛЬ: Ведущий юрист-эколог движения ALMA.
-    ЗАДАЧА: Подготовить юридическое заключение и заявление.
+    РОЛЬ: Юрист-эколог ALMA.
+    НАРУШЕНИЕ: {inc_type}. ДЕТАЛИ: {desc}. МЕСТО: {cad_id} ({coords}).
+    БАЗА ЗНАНИЙ: {legal_db}
     
-    СУТЬ ДЕЛА:
-    - Нарушение: {inc_type}
-    - Детали: {desc}
-    - Место: {cad_id} ({coords})
-    
-    ТВОЯ БИБЛИОТЕКА ЗАКОНОВ (ИСПОЛЬЗУЙ ЕЁ):
-    {legal_db}
-
-    ТРЕБОВАНИЯ К ОТВЕТУ:
-
-    ЧАСТЬ 1. КОНСУЛЬТАЦИЯ ВОЛОНТЕРУ
-    - Кратко: какая статья нарушена.
-    - Совет: что именно зафиксировать (номера машин, глубину ямы, спилы деревьев).
-
-    ЧАСТЬ 2. ОФИЦИАЛЬНОЕ ЗАЯВЛЕНИЕ В ГОСОРГАН
-    - Адресат: Акимат г. Алматы (или ГАСК/Экология по ситуации).
-    - Стиль: Строгий, процессуальный.
-    - Обязательно цитируй статьи из Библиотеки Законов (выше).
-    - Если нарушение серьезное — ссылайся на УК РК или КоАП.
-    - Укажи координаты.
-    - Подпись: "Волонтер движения ALMA".
+    ЗАДАЧА:
+    1. КОНСУЛЬТАЦИЯ ВОЛОНТЕРУ (Кратко: какая статья нарушена, что снять на фото).
+    2. ЗАЯВЛЕНИЕ В АКИМАТ (Официально, с цитатами законов, требованием проверки).
     """
 
 def send_email_with_attachments(to_email, subject, body, attachment_paths):
@@ -88,8 +62,7 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
         if f_path and os.path.exists(f_path):
             try:
                 with open(f_path, 'rb') as f:
-                    img = MIMEImage(f.read(), name=os.path.basename(f_path))
-                    msg.attach(img)
+                    msg.attach(MIMEImage(f.read(), name=os.path.basename(f_path)))
             except: pass
 
     try:
@@ -98,42 +71,54 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
             s.send_message(msg)
         print(f"   ✉️ Почта отправлена: {to_email}")
     except Exception as e:
-        print(f"   ❌ Ошибка отправки почты: {e}")
+        print(f"   ❌ Ошибка почты: {e}")
 
 def main():
-    print("🚀 ALMA 3.6: Gemini 1.5 Flash (Stable High-Quota)")
+    print("🚀 ALMA 3.7: DIAGNOSTIC MODE")
     
     mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
     genai.configure(api_key=get_env('GEMINI_API_KEY'))
     
-    # --- МОДЕЛЬ 1.5 FLASH (Самая стабильная для больших текстов) ---
+    # --- НАСТРОЙКИ БЕЗОПАСНОСТИ ---
+    safety = {
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    }
+
+    # --- УМНЫЙ ВЫБОР МОДЕЛИ ---
+    target_model = 'gemini-1.5-flash'
     try:
-        model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash', 
-            safety_settings={
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-            }
-        )
+        print(f"🛠 Проверка модели {target_model}...")
+        model = genai.GenerativeModel(model_name=target_model, safety_settings=safety)
+        # Тестовый запрос. Если упадет - перейдем к плану Б
+        model.generate_content("test") 
+        print(f"✅ Модель {target_model} активна!")
     except Exception as e:
-        print(f"⚠️ Ошибка инициализации модели: {e}")
-        return
+        print(f"⚠️ Модель {target_model} недоступна: {e}")
+        
+        # ДИАГНОСТИКА: ЧТО ВООБЩЕ ЕСТЬ?
+        print("\n📋 ДОСТУПНЫЕ МОДЕЛИ (ИЗ ЛОГА):")
+        try:
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    print(f"   - {m.name}")
+        except: pass
 
-    # Загружаем базу знаний
+        # ПЛАН Б: Переключаемся на GEMINI-PRO (она работает всегда)
+        print("\n🔄 ВКЛЮЧАЮ РЕЗЕРВ: gemini-pro")
+        model = genai.GenerativeModel(model_name='gemini-pro', safety_settings=safety)
+
+    # --- ДАЛЕЕ ОБЫЧНЫЙ КОД ---
     legal_knowledge = load_knowledge_base()
-    # Если база слишком огромная, можно обрезать (но 1.5 Flash выдержит до 1 млн токенов)
-    print(f"🧠 Объем базы знаний: {len(legal_knowledge)} символов.")
-
     if os.path.exists(PROJECT_PATH): shutil.rmtree(PROJECT_PATH)
     mc.download_project(MERGIN_PROJECT, PROJECT_PATH)
 
     try:
         incidents = gpd.read_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE))
         photos_gdf = gpd.read_file(os.path.join(PROJECT_PATH, PHOTOS_FILE))
-    except Exception as e:
-        print(f"❌ Ошибка данных: {e}"); return
+    except: return
 
     if 'is_sent' not in incidents.columns: incidents['is_sent'] = 0
     incidents['is_sent'] = incidents['is_sent'].fillna(0).astype(int)
@@ -184,36 +169,7 @@ def main():
                     else: cad_id = os.path.splitext(os.path.basename(g_file))[0]
                     break
             except: pass
-        
-        if cad_id == "Кадастровый номер не установлен":
-             cad_id = f"Участок по координатам {coords_str}"
+        if cad_id == "Кадастровый номер не установлен": cad_id = f"Участок {coords_str}"
         
         # ГЕНЕРАЦИЯ
-        prompt = get_legal_prompt(row.get('incident_type'), row.get('description'), cad_id, coords_str, legal_knowledge)
-        
-        try:
-            print("   ⏳ Запрос к Gemini 1.5 Flash...")
-            response = model.generate_content(prompt)
-            text = response.text
-            print("   ✅ Ответ получен!")
-        except Exception as e:
-            err_msg = f"ОШИБКА AI: {e}"
-            print(f"   ❌ {err_msg}")
-            text = f"Произошла ошибка при генерации ответа: {e}\n\nПопробуйте перезапустить робота через 5 минут."
-
-        send_email_with_attachments(row.get('volunteer_email'), f"ALMA КОНСУЛЬТАЦИЯ: {cad_id}", text, attachments)
-        
-        for f in attachments:
-            try: os.remove(f)
-            except: pass
-
-        incidents.at[idx, 'cadastre_id'] = cad_id
-        incidents.at[idx, 'ai_complaint'] = text
-        incidents.at[idx, 'is_sent'] = 1
-
-    incidents.to_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE), driver="GPKG")
-    mc.push_project(PROJECT_PATH)
-    print("💾 Готово.")
-
-if __name__ == "__main__":
-    main()
+        prompt = get_legal_prompt
