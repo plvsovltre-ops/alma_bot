@@ -8,16 +8,15 @@ import google.generativeai as genai
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
-from email.mime.application import MIMEApplication
 from mergin import MerginClient
 
-# --- КОНФИГУРАЦИЯ ---
+# --- 1. НАСТРОЙКИ ---
 MERGIN_PROJECT = "ALMA_exmachina/alma_bot"
 PROJECT_PATH = "./project"
 INCIDENTS_FILE = "Инцидент.gpkg" 
 PHOTOS_FILE = "photos.gpkg"
 
-# Ключевые слова для поиска слоев садов
+# Ключевые слова для поиска файлов с садами
 GARDEN_KEYWORDS = ["сады", "orchards", "защищенные", "проверке", "возвращенный"]
 
 def get_env(name):
@@ -25,148 +24,167 @@ def get_env(name):
     if not val: print(f"⚠️ Секрет {name} не найден!")
     return val
 
+# --- 2. ЮРИДИЧЕСКИЙ ПРОМПТ (СУДЕБНЫЙ ЭКСПЕРТ) ---
 def get_legal_prompt(inc_type, desc, cad_id):
     return f"""
-    РОЛЬ: Природоохранный прокурор г. Алматы.
-    ЗАДАЧА: Написать текст обращения в Акимат (E-Otinish).
-    НАРУШЕНИЕ: {inc_type}.
-    ОПИСАНИЕ: {desc}.
-    МЕСТО (Кадастр): {cad_id}.
-    ВАЖНО: Укажи, что фото-доказательства прилагаются к данному обращению.
-    ТРЕБОВАНИЕ: Провести проверку по нормам Экологического и Земельного кодексов РК.
+    РОЛЬ: Опытный судебный юрист, эксперт по земельному и экологическому праву РК.
+    СТИЛЬ: Официально-деловой, жесткий, процессуальный.
+    
+    ЗАДАЧА: 
+    Подготовить юридически обоснованное обращение в Государственный орган (Акимат, ГАСК, Экология) через E-Otinish.
+    
+    ФАКТУРА ДЕЛА:
+    1. Квалификация нарушения: {inc_type}.
+    2. Пояснения свидетеля: {desc}.
+    3. Место совершения (Кадастровый номер / Локация): {cad_id}.
+    4. Доказательная база: Фотоматериалы прилагаются к заявлению.
+
+    ПРАВОВОЕ ОБОСНОВАНИЕ (Использовать императивные нормы):
+    - Ссылаться на Земельный кодекс РК (ст. 43, 65, 136) о целевом использовании и охране земель.
+    - Ссылаться на Экологический кодекс РК (Принцип «Загрязнитель платит», ст. 202-205).
+    - Если применимо, указывать на признаки состава адм. правонарушения (КоАП РК ст. 337, 344).
+
+    ПРОСИТЕЛЬНАЯ ЧАСТЬ:
+    1. Организовать выездную проверку фактов.
+    2. Установить собственника участка {cad_id} и привлечь к ответственности.
+    3. Выдать предписание об устранении нарушений.
+    
+    ВЫВОД: Сформируй готовый текст заявления без приветствий и лишних слов.
     """
 
+# --- 3. ОТПРАВКА ПОЧТЫ С ФОТО ---
 def send_email_with_attachments(to_email, subject, body, attachment_paths):
-    """Отправляет письмо с вложениями (фото)"""
-    sender = get_env('MERGIN_USER') # Используем почту монитора как отправителя
+    sender = get_env('MERGIN_USER') 
     password = get_env('GMAIL_APP_PASS')
     
-    if not sender or not password:
-        print("❌ Ошибка: Нет логина/пароля для почты.")
-        return
+    if not sender or not password: return
 
     msg = MIMEMultipart()
     msg['From'] = sender
-    msg['To'] = f"{sender}, {to_email}" # Копия себе и волонтеру
+    msg['To'] = f"{sender}, {to_email}"
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
 
-    # Прикрепляем фото
     for f_path in attachment_paths:
         if f_path and os.path.exists(f_path):
             try:
                 with open(f_path, 'rb') as f:
-                    file_data = f.read()
-                    # Пытаемся определить имя файла
-                    fname = os.path.basename(f_path)
-                    # Создаем объект картинки
-                    image = MIMEImage(file_data, name=fname)
-                    msg.attach(image)
-                    print(f"   📎 Прикреплен файл: {fname}")
-            except Exception as e:
-                print(f"   ⚠️ Не удалось прикрепить {f_path}: {e}")
+                    img = MIMEImage(f.read(), name=os.path.basename(f_path))
+                    msg.attach(img)
+            except: pass
 
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(sender, password)
-            server.send_message(msg)
-        print(f"   ✉️ Письмо с фото отправлено: {to_email}")
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as s:
+            s.login(sender, password)
+            s.send_message(msg)
+        print(f"   ✉️ Почта отправлена: {to_email}")
     except Exception as e:
-        print(f"   ❌ Ошибка отправки почты: {e}")
+        print(f"   ❌ Ошибка почты: {e}")
 
+# --- 4. ОСНОВНОЙ КОД ---
 def main():
-    print("🚀 ALMA 2.1: Email Attachments Mode")
+    print("🚀 ALMA 2.5: Legal Expert & Exact Layer Field")
     
-    # 1. Авторизация
     mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
     genai.configure(api_key=get_env('GEMINI_API_KEY'))
     model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
-    # 2. Скачивание (с полной очисткой кэша для надежности)
+    # Очистка и скачивание (чтобы не было конфликтов)
     if os.path.exists(PROJECT_PATH): shutil.rmtree(PROJECT_PATH)
-    print("📥 Скачиваю проект...")
     mc.download_project(MERGIN_PROJECT, PROJECT_PATH)
 
-    # 3. Чтение данных
     try:
-        inc_p = os.path.join(PROJECT_PATH, INCIDENTS_FILE)
-        pho_p = os.path.join(PROJECT_PATH, PHOTOS_FILE)
-        
-        incidents = gpd.read_file(inc_p)
-        photos_gdf = gpd.read_file(pho_p)
-        
-        # Сады
-        garden_files = [f for f in glob.glob(f"{PROJECT_PATH}/*.gpkg") if any(k in f.lower() for k in GARDEN_KEYWORDS)]
-        gardens = pd.concat([gpd.read_file(f).to_crs("EPSG:4326") for f in garden_files]) if garden_files else None
+        incidents = gpd.read_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE))
+        photos_gdf = gpd.read_file(os.path.join(PROJECT_PATH, PHOTOS_FILE))
     except Exception as e:
-        print(f"❌ Ошибка чтения таблиц: {e}"); return
+        print(f"❌ Ошибка открытия таблиц: {e}"); return
 
-    # Инициализация
+    # Подготовка статусов
     if 'is_sent' not in incidents.columns: incidents['is_sent'] = 0
     incidents['is_sent'] = incidents['is_sent'].fillna(0).astype(int)
     
-    # Фильтр новых
     new_recs = incidents[incidents['is_sent'] == 0]
-    
-    if new_recs.empty:
-        print("✅ Новых инцидентов нет."); return
+    if new_recs.empty: print("✅ Новых данных нет."); return
 
-    print(f"⚡ Найдено новых записей: {len(new_recs)}")
+    # Собираем пути к файлам садов (не открываем их все сразу)
+    garden_files = []
+    for f in glob.glob(f"{PROJECT_PATH}/*.gpkg"):
+        if os.path.basename(f) not in [INCIDENTS_FILE, PHOTOS_FILE]:
+            if any(k in os.path.basename(f).lower() for k in GARDEN_KEYWORDS):
+                garden_files.append(f)
+
+    print(f"⚡ Новых инцидентов: {len(new_recs)}. Баз данных садов: {len(garden_files)}")
 
     for idx, row in new_recs.iterrows():
         uid = row.get('unique-id')
-        print(f"\n--- Обработка {uid} ---")
+        print(f"\n--- Дело № {uid} ---")
         
-        # А. Сбор фото (Локальные пути)
+        # A. Сбор фото
         attachments = []
-        related_photos = photos_gdf[photos_gdf['external_pk'] == uid]
-        
-        if not related_photos.empty:
-            for _, p_row in related_photos.iterrows():
-                raw_path = p_row.get('photo')
-                if raw_path:
-                    # Ищем файл (он может быть в корне или в подпапке)
+        rel_photos = photos_gdf[photos_gdf['external_pk'] == uid]
+        if not rel_photos.empty:
+            for _, p_row in rel_photos.iterrows():
+                path = p_row.get('photo')
+                if path:
+                    # Проверка путей (иногда Mergin пишет полный путь, иногда относительный)
                     candidates = [
-                        os.path.join(PROJECT_PATH, raw_path),
-                        os.path.join(PROJECT_PATH, os.path.basename(raw_path))
+                        os.path.join(PROJECT_PATH, path),
+                        os.path.join(PROJECT_PATH, os.path.basename(path))
                     ]
                     for c in candidates:
                         if os.path.exists(c):
                             attachments.append(c)
                             break
-        
-        # Б. Кадастр
-        cad_id = "Не определен"
-        if gardens is not None:
-            pt = gpd.GeoDataFrame([row], crs="EPSG:4326")
-            res = gpd.sjoin(pt, gardens, how="inner", predicate="intersects")
-            if not res.empty: cad_id = str(res.iloc[0]['layer'])
 
-        # В. Gemini
+        # B. ОПРЕДЕЛЕНИЕ КАДАСТРА ИЗ ПОЛЯ LAYER (READ-ONLY)
+        cad_id = "Кадастровый номер не установлен"
+        
+        # Создаем точку геометрии для проверки
+        point_geom = row.geometry
+        
+        # Пробегаем по файлам садов
+        for g_file in garden_files:
+            try:
+                # Читаем файл в память (не блокируя его)
+                temp_gdf = gpd.read_file(g_file).to_crs("EPSG:4326")
+                
+                # Ищем полигон, содержащий точку
+                # contains - строго внутри, intersects - касается или внутри
+                match = temp_gdf[temp_gdf.contains(point_geom)]
+                
+                if not match.empty:
+                    # БИНГО! Нашли полигон.
+                    # Пытаемся взять значение из поля 'layer'
+                    if 'layer' in match.columns:
+                        val = match.iloc[0]['layer']
+                        if val: 
+                            cad_id = str(val)
+                            print(f"   🎯 Найден кадастр в поле layer: {cad_id}")
+                    else:
+                        # Если поля layer в файле нет - берем имя файла
+                        cad_id = os.path.splitext(os.path.basename(g_file))[0]
+                        print(f"   ⚠️ Поле layer отсутствует, взято имя файла: {cad_id}")
+                    
+                    # Прерываем поиск, так как сад найден
+                    break
+            except Exception as e:
+                print(f"   ⚠️ Ошибка чтения файла {os.path.basename(g_file)}: {e}")
+        
+        if cad_id == "Кадастровый номер не установлен":
+            print("   📍 Точка находится вне известных границ садов")
+
+        # C. ГЕНЕРАЦИЯ ЮРИДИЧЕСКОГО ТЕКСТА
         prompt = get_legal_prompt(row.get('incident_type'), row.get('description'), cad_id)
         try: text = model.generate_content(prompt).text
-        except: text = "Ошибка AI"
+        except: text = "Ошибка генерации AI"
 
-        # Г. Отправка и Очистка
-        send_email_with_attachments(row.get('volunteer_email'), f"ALMA: {cad_id}", text, attachments)
+        # D. ОТПРАВКА И ЧИСТКА
+        send_email_with_attachments(row.get('volunteer_email'), f"ALMA ИСК: {cad_id}", text, attachments)
         
-        # Д. Удаление фото (чтобы очистить Mergin Cloud)
-        for f_path in attachments:
-            try:
-                os.remove(f_path)
-                print(f"   🗑 Файл удален локально: {os.path.basename(f_path)}")
+        for f in attachments:
+            try: os.remove(f)
             except: pass
 
-        # Е. Обновление статуса
         incidents.at[idx, 'cadastre_id'] = cad_id
         incidents.at[idx, 'ai_complaint'] = text
-        incidents.at[idx, 'is_sent'] = 1
-
-    # 4. Финальная синхронизация
-    # (Mergin увидит, что файлов фото нет, и удалит их из облака, но они уже у вас на почте)
-    incidents.to_file(inc_p, driver="GPKG")
-    mc.push_project(PROJECT_PATH)
-    print("💾 Синхронизация завершена. Облако очищено.")
-
-if __name__ == "__main__":
-    main()
+        incidents.at[idx, '
