@@ -1,5 +1,5 @@
-# --- ALMA 5.0: THE MODEL HUNTER ---
-print("🚀 SYSTEM STARTUP: Инициализация...", flush=True)
+# --- ALMA 6.0: SMART LIMITS ---
+print("🚀 SYSTEM STARTUP...", flush=True)
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -10,7 +10,6 @@ import smtplib
 import shutil
 import pandas as pd
 import geopandas as gpd
-# ИСПОЛЬЗУЕМ НОВЫЙ SDK
 from google import genai
 from google.genai import types
 
@@ -29,15 +28,17 @@ PHOTOS_FILE = "photos.gpkg"
 LAWS_FOLDER = "laws"
 GARDEN_KEYWORDS = ["сады", "orchards", "защищенные", "проверке", "возвращенный"]
 
-# СПИСОК МОДЕЛЕЙ ДЛЯ ПЕРЕБОРА (ОТ ЛУЧШЕЙ К ПРОСТОЙ)
+# ЛИМИТ ЧТЕНИЯ (чтобы не сломать квоту Google)
+# 200 000 символов ≈ 50 000 токенов (безопасно для Free Tier)
+MAX_LAW_CHARS = 200000 
+
+# СПИСОК МОДЕЛЕЙ (Сначала пробуем легкие и быстрые)
 MODEL_CANDIDATES = [
     "gemini-1.5-flash",
-    "gemini-1.5-flash-001",
     "gemini-1.5-flash-002",
-    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash-8b", 
     "gemini-2.0-flash-exp",
-    "gemini-1.5-pro",
-    "gemini-1.0-pro"
+    "gemini-1.5-pro"
 ]
 
 def get_env(name):
@@ -48,13 +49,33 @@ def get_env(name):
 def load_knowledge_base():
     full_text = ""
     files = sorted(glob.glob(os.path.join(LAWS_FOLDER, "*.txt")))
+    
     if not files: return "База законов пуста."
-    print(f"📚 База знаний: {len(files)} файлов.", flush=True)
+    
+    total_chars = 0
+    print(f"📚 Читаю законы (Лимит: {MAX_LAW_CHARS} симв)...", flush=True)
+    
     for f_path in files:
+        if total_chars >= MAX_LAW_CHARS:
+            print("   ⚠️ Лимит объема превышен. Остальные файлы пропущены.", flush=True)
+            break
+            
         try:
             with open(f_path, 'r', encoding='utf-8') as f:
-                full_text += f"\n\n--- ДОКУМЕНТ: {os.path.basename(f_path)} ---\n" + f.read()
+                # Читаем файл
+                content = f.read()
+                
+                # Если файл огромный - берем только начало (первые 30к символов),
+                # но Методичку (00_) читаем полностью.
+                if "00_" not in os.path.basename(f_path) and len(content) > 30000:
+                    content = content[:30000] + "\n...[ТЕКСТ СОКРАЩЕН РОБОТОМ]..."
+                
+                full_text += f"\n\n--- ДОКУМЕНТ: {os.path.basename(f_path)} ---\n" + content
+                total_chars += len(content)
+                print(f"   📖 Добавлен: {os.path.basename(f_path)} ({len(content)} симв)", flush=True)
         except: pass
+        
+    print(f"✅ Итоговый объем базы: {len(full_text)} символов.", flush=True)
     return full_text
 
 def get_legal_prompt(inc_type, desc, cad_id, coords, legal_db):
@@ -62,7 +83,7 @@ def get_legal_prompt(inc_type, desc, cad_id, coords, legal_db):
     РОЛЬ: Юрист-эколог движения ALMA.
     НАРУШЕНИЕ: {inc_type}. ОПИСАНИЕ: {desc}. ЛОКАЦИЯ: {cad_id} ({coords}).
     
-    БАЗА ЗНАНИЙ:
+    БАЗА ЗНАНИЙ (Фрагменты):
     {legal_db}
 
     ЗАДАЧА (СТРОГО 2 ЧАСТИ):
@@ -104,47 +125,41 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
         print(f"   ❌ Ошибка почты: {e}", flush=True)
 
 def main():
-    print("🚀 ЗАПУСК ALMA 5.0 (MODEL HUNTER)", flush=True)
+    print("🚀 ЗАПУСК ALMA 6.0 (SMART LIBRARIAN)", flush=True)
     
     mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
     
-    # 1. ИНИЦИАЛИЗАЦИЯ CLIENT
+    # 1. ИНИЦИАЛИЗАЦИЯ
     try:
         client = genai.Client(api_key=get_env('GEMINI_API_KEY'))
     except Exception as e:
-        print(f"❌ Ошибка ключа API: {e}")
-        return
+        print(f"❌ Ошибка ключа: {e}"); return
 
-    # 2. ПОИСК РАБОЧЕЙ МОДЕЛИ
+    # 2. ПОИСК МОДЕЛИ
     active_model = None
-    print("🔍 Ищу доступную модель Gemini...", flush=True)
-    
+    print("🔍 Подбор модели...", flush=True)
     for m in MODEL_CANDIDATES:
         try:
-            # Делаем тестовый запрос "Привет"
             client.models.generate_content(model=m, contents="Ping")
-            print(f"   ✅ НАЙДЕНА РАБОЧАЯ МОДЕЛЬ: {m}", flush=True)
+            print(f"   ✅ Выбрана модель: {m}", flush=True)
             active_model = m
             break
-        except Exception:
-            # Если ошибка - пробуем следующую молча
-            continue
+        except: continue
             
     if not active_model:
-        print("❌ КРИТИЧЕСКАЯ ОШИБКА: Ни одна модель Gemini не ответила. Проверьте API ключ.", flush=True)
-        # Аварийный выход, чтобы не спамить пустыми письмами
-        return 
+        print("❌ Все модели заняты или недоступны. Проверьте ключ.", flush=True)
+        return
 
-    # 3. ОСНОВНАЯ РАБОТА
+    # 3. РАБОТА С ФАЙЛАМИ
     legal_knowledge = load_knowledge_base()
+    
     if os.path.exists(PROJECT_PATH): shutil.rmtree(PROJECT_PATH)
     mc.download_project(MERGIN_PROJECT, PROJECT_PATH)
 
     try:
         incidents = gpd.read_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE))
         photos_gdf = gpd.read_file(os.path.join(PROJECT_PATH, PHOTOS_FILE))
-    except Exception as e:
-        print(f"❌ Ошибка таблиц: {e}"); return
+    except: return
 
     if 'is_sent' not in incidents.columns: incidents['is_sent'] = 0
     incidents['is_sent'] = incidents['is_sent'].fillna(0).astype(int)
@@ -160,7 +175,7 @@ def main():
             if any(k in os.path.basename(f).lower() for k in GARDEN_KEYWORDS):
                 garden_files.append(f)
 
-    print(f"⚡ Обработка {len(new_recs)} дел через {active_model}.", flush=True)
+    print(f"⚡ Обработка {len(new_recs)} дел.", flush=True)
 
     for idx, row in new_recs.iterrows():
         uid = row.get('unique-id')
@@ -219,7 +234,7 @@ def main():
             text = response.text
             print("   ✅ Успех!", flush=True)
         except Exception as e:
-            err_msg = f"СБОЙ ПОСЛЕ ТЕСТА: {e}"
+            err_msg = f"ОШИБКА AI: {e}"
             print(f"   ❌ {err_msg}", flush=True)
             text = f"{err_msg}\n\nПопробуйте позже."
 
