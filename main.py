@@ -1,8 +1,7 @@
-# --- САМАЯ ПЕРВАЯ СТРОКА: ПРОВЕРКА ЖИЗНИ ---
+# --- ALMA 4.0: NEW GOOGLE GENAI SDK ---
 print("🚀 SYSTEM STARTUP: Инициализация...", flush=True)
 
 import warnings
-# Отключаем все предупреждения, чтобы не пугать робота и не засорять логи
 warnings.filterwarnings("ignore")
 
 import os
@@ -11,13 +10,14 @@ import smtplib
 import shutil
 import pandas as pd
 import geopandas as gpd
-# Теперь импортируем библиотеку AI (она будет молчать)
-import google.generativeai as genai
+# НОВАЯ БИБЛИОТЕКА
+from google import genai
+from google.genai import types
+
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from mergin import MerginClient
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 print("✅ Библиотеки загружены.", flush=True)
 
@@ -93,24 +93,16 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
         print(f"   ❌ Ошибка почты: {e}", flush=True)
 
 def main():
-    print("🚀 ЗАПУСК ALMA 3.8 (SILENT MODE)", flush=True)
+    print("🚀 ЗАПУСК ALMA 4.0 (NEW GENAI SDK)", flush=True)
     
     mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
-    genai.configure(api_key=get_env('GEMINI_API_KEY'))
     
-    # Настройки безопасности (отключаем цензуру для УК РК)
-    safety = {
-        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-    }
-
-    # Инициализация модели 1.5 Flash
+    # --- ИНИЦИАЛИЗАЦИЯ НОВОГО КЛИЕНТА GOOGLE ---
     try:
-        model = genai.GenerativeModel(model_name='gemini-1.5-flash', safety_settings=safety)
+        client = genai.Client(api_key=get_env('GEMINI_API_KEY'))
+        print("✅ Google Client инициализирован.")
     except Exception as e:
-        print(f"❌ Ошибка модели: {e}")
+        print(f"❌ Ошибка клиента AI: {e}")
         return
 
     # Загрузка законов
@@ -131,10 +123,9 @@ def main():
     
     new_recs = incidents[incidents['is_sent'] == 0]
     if new_recs.empty: 
-        print("✅ Новых данных нет (Проверьте кнопку Sync в приложении).", flush=True)
+        print("✅ Новых данных нет (Синхронизируйте приложение).", flush=True)
         return
 
-    # Поиск садов
     garden_files = []
     for f in glob.glob(f"{PROJECT_PATH}/*.gpkg"):
         if os.path.basename(f) not in [INCIDENTS_FILE, PHOTOS_FILE]:
@@ -180,16 +171,40 @@ def main():
             except: pass
         if cad_id == "Кадастровый номер не установлен": cad_id = f"Участок {coords_str}"
         
-        # Генерация AI
+        # ГЕНЕРАЦИЯ (НОВЫЙ МЕТОД)
         prompt = get_legal_prompt(row.get('incident_type'), row.get('description'), cad_id, coords_str, legal_knowledge)
         
         try:
-            print("   ⏳ Gemini думает...", flush=True)
-            response = model.generate_content(prompt)
+            print("   ⏳ Gemini 1.5 Flash думает...", flush=True)
+            # Новый синтаксис вызова
+            response = client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    safety_settings=[
+                        types.SafetySetting(
+                            category='HARM_CATEGORY_HATE_SPEECH',
+                            threshold='BLOCK_NONE'
+                        ),
+                        types.SafetySetting(
+                            category='HARM_CATEGORY_DANGEROUS_CONTENT',
+                            threshold='BLOCK_NONE'
+                        ),
+                        types.SafetySetting(
+                            category='HARM_CATEGORY_HARASSMENT',
+                            threshold='BLOCK_NONE'
+                        ),
+                        types.SafetySetting(
+                            category='HARM_CATEGORY_SEXUALLY_EXPLICIT',
+                            threshold='BLOCK_NONE'
+                        )
+                    ]
+                )
+            )
             text = response.text
             print("   ✅ Текст готов!", flush=True)
         except Exception as e:
-            err_msg = f"ОШИБКА ГЕНЕРАЦИИ: {e}"
+            err_msg = f"ОШИБКА ГЕНЕРАЦИИ (NEW SDK): {e}"
             print(f"   ❌ {err_msg}", flush=True)
             text = f"{err_msg}\n\nПопробуйте позже."
 
