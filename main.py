@@ -1,15 +1,25 @@
+# --- САМАЯ ПЕРВАЯ СТРОКА: ПРОВЕРКА ЖИЗНИ ---
+print("🚀 SYSTEM STARTUP: Инициализация...", flush=True)
+
+import warnings
+# Отключаем все предупреждения, чтобы не пугать робота и не засорять логи
+warnings.filterwarnings("ignore")
+
 import os
 import glob
 import smtplib
 import shutil
 import pandas as pd
 import geopandas as gpd
+# Теперь импортируем библиотеку AI (она будет молчать)
 import google.generativeai as genai
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from mergin import MerginClient
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
+
+print("✅ Библиотеки загружены.", flush=True)
 
 # --- НАСТРОЙКИ ---
 MERGIN_PROJECT = "ALMA_exmachina/alma_bot"
@@ -28,7 +38,7 @@ def load_knowledge_base():
     full_text = ""
     files = sorted(glob.glob(os.path.join(LAWS_FOLDER, "*.txt")))
     if not files: return "База законов пуста."
-    print(f"📚 Загрузка базы ({len(files)} файлов)...")
+    print(f"📚 База знаний: {len(files)} файлов.", flush=True)
     for f_path in files:
         try:
             with open(f_path, 'r', encoding='utf-8') as f:
@@ -38,13 +48,22 @@ def load_knowledge_base():
 
 def get_legal_prompt(inc_type, desc, cad_id, coords, legal_db):
     return f"""
-    РОЛЬ: Юрист-эколог ALMA.
-    НАРУШЕНИЕ: {inc_type}. ДЕТАЛИ: {desc}. МЕСТО: {cad_id} ({coords}).
-    БАЗА ЗНАНИЙ: {legal_db}
+    РОЛЬ: Юрист-эколог движения ALMA.
+    НАРУШЕНИЕ: {inc_type}. ОПИСАНИЕ: {desc}. ЛОКАЦИЯ: {cad_id} ({coords}).
     
-    ЗАДАЧА:
-    1. КОНСУЛЬТАЦИЯ ВОЛОНТЕРУ (Кратко: какая статья нарушена, что снять на фото).
-    2. ЗАЯВЛЕНИЕ В АКИМАТ (Официально, с цитатами законов, требованием проверки).
+    БАЗА ЗНАНИЙ:
+    {legal_db}
+
+    ЗАДАЧА (СТРОГО 2 ЧАСТИ):
+    1. КОНСУЛЬТАЦИЯ ВОЛОНТЕРУ:
+       - Кратко: какая статья нарушена.
+       - Совет: что снять на фото.
+    
+    2. ЗАЯВЛЕНИЕ В АКИМАТ:
+       - Официальный стиль.
+       - ЦИТИРУЙ статьи из Базы Знаний.
+       - Укажи координаты.
+       - Подпись: "Волонтер движения ALMA".
     """
 
 def send_email_with_attachments(to_email, subject, body, attachment_paths):
@@ -69,17 +88,17 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as s:
             s.login(sender, password)
             s.send_message(msg)
-        print(f"   ✉️ Почта отправлена: {to_email}")
+        print(f"   ✉️ Почта отправлена: {to_email}", flush=True)
     except Exception as e:
-        print(f"   ❌ Ошибка почты: {e}")
+        print(f"   ❌ Ошибка почты: {e}", flush=True)
 
 def main():
-    print("🚀 ALMA 3.7: DIAGNOSTIC MODE")
+    print("🚀 ЗАПУСК ALMA 3.8 (SILENT MODE)", flush=True)
     
     mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
     genai.configure(api_key=get_env('GEMINI_API_KEY'))
     
-    # --- НАСТРОЙКИ БЕЗОПАСНОСТИ ---
+    # Настройки безопасности (отключаем цензуру для УК РК)
     safety = {
         HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
@@ -87,56 +106,46 @@ def main():
         HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
     }
 
-    # --- УМНЫЙ ВЫБОР МОДЕЛИ ---
-    target_model = 'gemini-1.5-flash'
+    # Инициализация модели 1.5 Flash
     try:
-        print(f"🛠 Проверка модели {target_model}...")
-        model = genai.GenerativeModel(model_name=target_model, safety_settings=safety)
-        # Тестовый запрос. Если упадет - перейдем к плану Б
-        model.generate_content("test") 
-        print(f"✅ Модель {target_model} активна!")
+        model = genai.GenerativeModel(model_name='gemini-1.5-flash', safety_settings=safety)
     except Exception as e:
-        print(f"⚠️ Модель {target_model} недоступна: {e}")
-        
-        # ДИАГНОСТИКА: ЧТО ВООБЩЕ ЕСТЬ?
-        print("\n📋 ДОСТУПНЫЕ МОДЕЛИ (ИЗ ЛОГА):")
-        try:
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    print(f"   - {m.name}")
-        except: pass
+        print(f"❌ Ошибка модели: {e}")
+        return
 
-        # ПЛАН Б: Переключаемся на GEMINI-PRO (она работает всегда)
-        print("\n🔄 ВКЛЮЧАЮ РЕЗЕРВ: gemini-pro")
-        model = genai.GenerativeModel(model_name='gemini-pro', safety_settings=safety)
-
-    # --- ДАЛЕЕ ОБЫЧНЫЙ КОД ---
+    # Загрузка законов
     legal_knowledge = load_knowledge_base()
+
+    # Скачивание проекта
     if os.path.exists(PROJECT_PATH): shutil.rmtree(PROJECT_PATH)
     mc.download_project(MERGIN_PROJECT, PROJECT_PATH)
 
     try:
         incidents = gpd.read_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE))
         photos_gdf = gpd.read_file(os.path.join(PROJECT_PATH, PHOTOS_FILE))
-    except: return
+    except Exception as e:
+        print(f"❌ Ошибка таблиц: {e}"); return
 
     if 'is_sent' not in incidents.columns: incidents['is_sent'] = 0
     incidents['is_sent'] = incidents['is_sent'].fillna(0).astype(int)
     
     new_recs = incidents[incidents['is_sent'] == 0]
-    if new_recs.empty: print("✅ Новых данных нет."); return
+    if new_recs.empty: 
+        print("✅ Новых данных нет (Проверьте кнопку Sync в приложении).", flush=True)
+        return
 
+    # Поиск садов
     garden_files = []
     for f in glob.glob(f"{PROJECT_PATH}/*.gpkg"):
         if os.path.basename(f) not in [INCIDENTS_FILE, PHOTOS_FILE]:
             if any(k in os.path.basename(f).lower() for k in GARDEN_KEYWORDS):
                 garden_files.append(f)
 
-    print(f"⚡ Обработка {len(new_recs)} дел.")
+    print(f"⚡ Обработка {len(new_recs)} дел.", flush=True)
 
     for idx, row in new_recs.iterrows():
         uid = row.get('unique-id')
-        print(f"\n--- Дело № {uid} ---")
+        print(f"\n--- Дело № {uid} ---", flush=True)
         
         # Фото
         attachments = []
@@ -171,17 +180,18 @@ def main():
             except: pass
         if cad_id == "Кадастровый номер не установлен": cad_id = f"Участок {coords_str}"
         
-        # ГЕНЕРАЦИЯ
+        # Генерация AI
         prompt = get_legal_prompt(row.get('incident_type'), row.get('description'), cad_id, coords_str, legal_knowledge)
         
         try:
-            print("   ⏳ Генерация ответа...")
+            print("   ⏳ Gemini думает...", flush=True)
             response = model.generate_content(prompt)
             text = response.text
+            print("   ✅ Текст готов!", flush=True)
         except Exception as e:
-            err_msg = f"CRITICAL AI ERROR: {e}"
-            print(f"   ❌ {err_msg}")
-            text = f"{err_msg}\n\nРобот не смог сгенерировать текст. См. логи GitHub."
+            err_msg = f"ОШИБКА ГЕНЕРАЦИИ: {e}"
+            print(f"   ❌ {err_msg}", flush=True)
+            text = f"{err_msg}\n\nПопробуйте позже."
 
         send_email_with_attachments(row.get('volunteer_email'), f"ALMA КОНСУЛЬТАЦИЯ: {cad_id}", text, attachments)
         
@@ -195,7 +205,7 @@ def main():
 
     incidents.to_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE), driver="GPKG")
     mc.push_project(PROJECT_PATH)
-    print("💾 Готово.")
+    print("💾 Готово. Синхронизация.", flush=True)
 
 if __name__ == "__main__":
     main()
