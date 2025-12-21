@@ -9,6 +9,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from mergin import MerginClient
+# Импортируем настройки безопасности
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 # --- 1. НАСТРОЙКИ ---
@@ -26,8 +27,9 @@ def get_env(name):
     return val
 
 def load_knowledge_base():
-    """Читает базу знаний. Если папка пуста - не ломается."""
+    """Читает базу знаний."""
     full_text = ""
+    # glob находит файлы, sorted сортирует их по именам (00, 01, 02...)
     files = sorted(glob.glob(os.path.join(LAWS_FOLDER, "*.txt")))
     
     if not files:
@@ -41,29 +43,35 @@ def load_knowledge_base():
                 full_text += f"\n\n--- ДОКУМЕНТ: {os.path.basename(f_path)} ---\n"
                 full_text += f.read()
         except Exception as e:
-            print(f"   ❌ Ошибка файла {f_path}: {e}")
+            print(f"   ❌ Ошибка чтения {f_path}: {e}")
             
     return full_text
 
 def get_legal_prompt(inc_type, desc, cad_id, coords, legal_db):
     return f"""
-    РОЛЬ: Юрист-эксперт ALMA.
-    ЦЕЛЬ: Консультация волонтера и Заявление в госорган.
+    РОЛЬ: Высококлассный юрист движения ALMA.
+    ТВОЯ ЗАДАЧА: Проанализировать нарушение и составить документы.
     
     СИТУАЦИЯ:
     - Нарушение: {inc_type}
-    - Детали: {desc}
+    - Комментарий: {desc}
     - Место: {cad_id} ({coords})
     
-    БАЗА ЗНАНИЙ (ИСПОЛЬЗУЙ ЕЁ ДЛЯ АРГУМЕНТАЦИИ):
+    БАЗА ЗНАНИЙ (ТВОЯ БИБЛИОТЕКА):
     {legal_db}
 
-    ЗАДАЧА:
-    1. КОНСУЛЬТАЦИЯ: Кратко объясни волонтеру, какая статья нарушена.
-    2. ЗАЯВЛЕНИЕ: Напиши официальное обращение в Акимат.
-       - Обязательно цитируй статьи из Базы Знаний.
-       - Укажи координаты.
-       - Подпись: "Волонтер ALMA".
+    ТРЕБОВАНИЯ К ОТВЕТУ (ДВЕ ЧАСТИ):
+
+    ЧАСТЬ 1. КОНСУЛЬТАЦИЯ ВОЛОНТЕРУ
+    - Коротко: какая статья нарушена.
+    - Совет: что снять на фото для доказательства.
+
+    ЧАСТЬ 2. ЗАЯВЛЕНИЕ В ГОСОРГАН (Акимат/ГАСК/Экология)
+    - Строгий официальный стиль.
+    - В мотивировочной части ОБЯЗАТЕЛЬНО цитируй пункты и статьи из Базы Знаний.
+    - Если нарушение серьезное — ссылайся на Уголовный кодекс (если он есть в базе).
+    - Укажи координаты.
+    - Подпись: "Волонтер движения ALMA".
     """
 
 def send_email_with_attachments(to_email, subject, body, attachment_paths):
@@ -94,25 +102,31 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
         print(f"   ❌ Ошибка отправки почты: {e}")
 
 def main():
-    print("🚀 ALMA 3.4: Debug & Safety Fix")
+    print("🚀 ALMA 3.5: Gemini 2.0 + No Censorship")
     
     mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
     genai.configure(api_key=get_env('GEMINI_API_KEY'))
     
-    # --- ВАЖНОЕ ИЗМЕНЕНИЕ: Настройки безопасности и Модель 1.5 ---
-    # Мы отключаем фильтры, чтобы робот мог читать Уголовный кодекс
-    model = genai.GenerativeModel(
-        model_name='gemini-1.5-flash', 
-        safety_settings={
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        }
-    )
+    # --- НАСТРОЙКИ МОДЕЛИ И БЕЗОПАСНОСТИ ---
+    # Мы используем Gemini 2.0 и ОТКЛЮЧАЕМ все фильтры безопасности,
+    # чтобы она могла читать Уголовный кодекс и слова про "преступления".
+    try:
+        model = genai.GenerativeModel(
+            model_name='gemini-2.0-flash-exp', 
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            }
+        )
+    except Exception as e:
+        print(f"⚠️ Ошибка инициализации модели: {e}")
+        return
 
+    # Загружаем законы
     legal_knowledge = load_knowledge_base()
-    print(f"🧠 База знаний: {len(legal_knowledge)} символов.")
+    print(f"🧠 Объем юридической базы: {len(legal_knowledge)} символов.")
 
     if os.path.exists(PROJECT_PATH): shutil.rmtree(PROJECT_PATH)
     mc.download_project(MERGIN_PROJECT, PROJECT_PATH)
@@ -121,7 +135,7 @@ def main():
         incidents = gpd.read_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE))
         photos_gdf = gpd.read_file(os.path.join(PROJECT_PATH, PHOTOS_FILE))
     except Exception as e:
-        print(f"❌ Ошибка открытия таблиц: {e}"); return
+        print(f"❌ Ошибка данных: {e}"); return
 
     if 'is_sent' not in incidents.columns: incidents['is_sent'] = 0
     incidents['is_sent'] = incidents['is_sent'].fillna(0).astype(int)
@@ -129,7 +143,6 @@ def main():
     new_recs = incidents[incidents['is_sent'] == 0]
     if new_recs.empty: print("✅ Новых данных нет."); return
 
-    # Подготовка садов
     garden_files = []
     for f in glob.glob(f"{PROJECT_PATH}/*.gpkg"):
         if os.path.basename(f) not in [INCIDENTS_FILE, PHOTOS_FILE]:
@@ -177,19 +190,24 @@ def main():
         if cad_id == "Кадастровый номер не установлен":
              cad_id = f"Участок по координатам {coords_str}"
         
-        # ГЕНЕРАЦИЯ (С ВЫВОДОМ РЕАЛЬНОЙ ОШИБКИ)
+        # ГЕНЕРАЦИЯ (С обработкой ошибок)
         prompt = get_legal_prompt(row.get('incident_type'), row.get('description'), cad_id, coords_str, legal_knowledge)
         
         try:
-            print("   ⏳ Отправляю запрос в Gemini...")
+            print("   ⏳ Запрос к Gemini 2.0...")
             response = model.generate_content(prompt)
             text = response.text
             print("   ✅ Ответ получен!")
         except Exception as e:
-            # ВОТ ЗДЕСЬ МЫ УВИДИМ РЕАЛЬНУЮ ПРИЧИНУ
-            error_msg = f"ОШИБКА GEMINI: {str(e)}"
-            print(f"   ❌ {error_msg}")
-            text = f"{error_msg}\n\nПопробуйте уменьшить размер файлов законов или проверить API ключ."
+            # Если все равно ошибка - выводим её в консоль и в письмо
+            err_msg = f"ОШИБКА ГЕНЕРАЦИИ: {e}"
+            print(f"   ❌ {err_msg}")
+            if "429" in str(e):
+                text = "Ошибка: Превышен лимит запросов к AI (Quota Exceeded). Попробуйте позже."
+            elif "400" in str(e):
+                text = f"Ошибка: Запрос слишком большой или некорректный. ({e})"
+            else:
+                text = f"{err_msg}\n\nВозможно, сработал фильтр безопасности, несмотря на настройки."
 
         send_email_with_attachments(row.get('volunteer_email'), f"ALMA КОНСУЛЬТАЦИЯ: {cad_id}", text, attachments)
         
