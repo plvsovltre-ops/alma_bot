@@ -12,7 +12,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # --- 1. КОНФИГУРАЦИЯ ---
-MERGIN_PROJECT = "ALMA_exmachina/alma_bot
+MERGIN_PROJECT = "ALMA_exmachina/alma_bot"
 PROJECT_PATH = "./project"
 INCIDENTS_FILE = "Инцидент.gpkg"
 PHOTOS_FILE = "photos.gpkg"
