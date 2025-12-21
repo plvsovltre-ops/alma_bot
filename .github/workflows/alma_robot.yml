@@ -1,0 +1,27 @@
+name: ALMA Legal Bot
+on:
+  schedule:
+    - cron: '*/30 * * * *' # Запуск каждые 30 минут
+  workflow_dispatch:      # Кнопка ручного запуска
+
+jobs:
+  patrol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+        
+      - name: Run Robot
+        env:
+          MERGIN_USER: ${{ secrets.MERGIN_USER }}
+          MERGIN_PASS: ${{ secrets.MERGIN_PASS }}
+          GMAIL_USER: ${{ secrets.MERGIN_USER }} # Или другой email
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        run: python main.py
