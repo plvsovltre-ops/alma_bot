@@ -1,4 +1,4 @@
-# --- ALMA 4.0: NEW GOOGLE GENAI SDK ---
+# --- ALMA 5.0: THE MODEL HUNTER ---
 print("🚀 SYSTEM STARTUP: Инициализация...", flush=True)
 
 import warnings
@@ -10,7 +10,7 @@ import smtplib
 import shutil
 import pandas as pd
 import geopandas as gpd
-# НОВАЯ БИБЛИОТЕКА
+# ИСПОЛЬЗУЕМ НОВЫЙ SDK
 from google import genai
 from google.genai import types
 
@@ -28,6 +28,17 @@ INCIDENTS_FILE = "Инцидент.gpkg"
 PHOTOS_FILE = "photos.gpkg"
 LAWS_FOLDER = "laws"
 GARDEN_KEYWORDS = ["сады", "orchards", "защищенные", "проверке", "возвращенный"]
+
+# СПИСОК МОДЕЛЕЙ ДЛЯ ПЕРЕБОРА (ОТ ЛУЧШЕЙ К ПРОСТОЙ)
+MODEL_CANDIDATES = [
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-001",
+    "gemini-1.5-flash-002",
+    "gemini-1.5-flash-latest",
+    "gemini-2.0-flash-exp",
+    "gemini-1.5-pro",
+    "gemini-1.0-pro"
+]
 
 def get_env(name):
     val = os.environ.get(name)
@@ -93,22 +104,39 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
         print(f"   ❌ Ошибка почты: {e}", flush=True)
 
 def main():
-    print("🚀 ЗАПУСК ALMA 4.0 (NEW GENAI SDK)", flush=True)
+    print("🚀 ЗАПУСК ALMA 5.0 (MODEL HUNTER)", flush=True)
     
     mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
     
-    # --- ИНИЦИАЛИЗАЦИЯ НОВОГО КЛИЕНТА GOOGLE ---
+    # 1. ИНИЦИАЛИЗАЦИЯ CLIENT
     try:
         client = genai.Client(api_key=get_env('GEMINI_API_KEY'))
-        print("✅ Google Client инициализирован.")
     except Exception as e:
-        print(f"❌ Ошибка клиента AI: {e}")
+        print(f"❌ Ошибка ключа API: {e}")
         return
 
-    # Загрузка законов
-    legal_knowledge = load_knowledge_base()
+    # 2. ПОИСК РАБОЧЕЙ МОДЕЛИ
+    active_model = None
+    print("🔍 Ищу доступную модель Gemini...", flush=True)
+    
+    for m in MODEL_CANDIDATES:
+        try:
+            # Делаем тестовый запрос "Привет"
+            client.models.generate_content(model=m, contents="Ping")
+            print(f"   ✅ НАЙДЕНА РАБОЧАЯ МОДЕЛЬ: {m}", flush=True)
+            active_model = m
+            break
+        except Exception:
+            # Если ошибка - пробуем следующую молча
+            continue
+            
+    if not active_model:
+        print("❌ КРИТИЧЕСКАЯ ОШИБКА: Ни одна модель Gemini не ответила. Проверьте API ключ.", flush=True)
+        # Аварийный выход, чтобы не спамить пустыми письмами
+        return 
 
-    # Скачивание проекта
+    # 3. ОСНОВНАЯ РАБОТА
+    legal_knowledge = load_knowledge_base()
     if os.path.exists(PROJECT_PATH): shutil.rmtree(PROJECT_PATH)
     mc.download_project(MERGIN_PROJECT, PROJECT_PATH)
 
@@ -123,7 +151,7 @@ def main():
     
     new_recs = incidents[incidents['is_sent'] == 0]
     if new_recs.empty: 
-        print("✅ Новых данных нет (Синхронизируйте приложение).", flush=True)
+        print("✅ Новых данных нет.", flush=True)
         return
 
     garden_files = []
@@ -132,7 +160,7 @@ def main():
             if any(k in os.path.basename(f).lower() for k in GARDEN_KEYWORDS):
                 garden_files.append(f)
 
-    print(f"⚡ Обработка {len(new_recs)} дел.", flush=True)
+    print(f"⚡ Обработка {len(new_recs)} дел через {active_model}.", flush=True)
 
     for idx, row in new_recs.iterrows():
         uid = row.get('unique-id')
@@ -171,40 +199,27 @@ def main():
             except: pass
         if cad_id == "Кадастровый номер не установлен": cad_id = f"Участок {coords_str}"
         
-        # ГЕНЕРАЦИЯ (НОВЫЙ МЕТОД)
+        # ГЕНЕРАЦИЯ
         prompt = get_legal_prompt(row.get('incident_type'), row.get('description'), cad_id, coords_str, legal_knowledge)
         
         try:
-            print("   ⏳ Gemini 1.5 Flash думает...", flush=True)
-            # Новый синтаксис вызова
+            print(f"   ⏳ Генерация ({active_model})...", flush=True)
             response = client.models.generate_content(
-                model='gemini-1.5-flash',
+                model=active_model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     safety_settings=[
-                        types.SafetySetting(
-                            category='HARM_CATEGORY_HATE_SPEECH',
-                            threshold='BLOCK_NONE'
-                        ),
-                        types.SafetySetting(
-                            category='HARM_CATEGORY_DANGEROUS_CONTENT',
-                            threshold='BLOCK_NONE'
-                        ),
-                        types.SafetySetting(
-                            category='HARM_CATEGORY_HARASSMENT',
-                            threshold='BLOCK_NONE'
-                        ),
-                        types.SafetySetting(
-                            category='HARM_CATEGORY_SEXUALLY_EXPLICIT',
-                            threshold='BLOCK_NONE'
-                        )
+                        types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE')
                     ]
                 )
             )
             text = response.text
-            print("   ✅ Текст готов!", flush=True)
+            print("   ✅ Успех!", flush=True)
         except Exception as e:
-            err_msg = f"ОШИБКА ГЕНЕРАЦИИ (NEW SDK): {e}"
+            err_msg = f"СБОЙ ПОСЛЕ ТЕСТА: {e}"
             print(f"   ❌ {err_msg}", flush=True)
             text = f"{err_msg}\n\nПопробуйте позже."
 
@@ -220,7 +235,7 @@ def main():
 
     incidents.to_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE), driver="GPKG")
     mc.push_project(PROJECT_PATH)
-    print("💾 Готово. Синхронизация.", flush=True)
+    print("💾 Готово.", flush=True)
 
 if __name__ == "__main__":
     main()
