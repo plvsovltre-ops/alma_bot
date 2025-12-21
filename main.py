@@ -1,4 +1,4 @@
-# --- ALMA 6.0: SMART LIMITS ---
+# --- ALMA 7.0: VISION & CLEAN TEXT ---
 print("🚀 SYSTEM STARTUP...", flush=True)
 
 import warnings
@@ -28,15 +28,11 @@ PHOTOS_FILE = "photos.gpkg"
 LAWS_FOLDER = "laws"
 GARDEN_KEYWORDS = ["сады", "orchards", "защищенные", "проверке", "возвращенный"]
 
-# ЛИМИТ ЧТЕНИЯ (чтобы не сломать квоту Google)
-# 200 000 символов ≈ 50 000 токенов (безопасно для Free Tier)
 MAX_LAW_CHARS = 200000 
 
-# СПИСОК МОДЕЛЕЙ (Сначала пробуем легкие и быстрые)
 MODEL_CANDIDATES = [
     "gemini-1.5-flash",
     "gemini-1.5-flash-002",
-    "gemini-1.5-flash-8b", 
     "gemini-2.0-flash-exp",
     "gemini-1.5-pro"
 ]
@@ -53,49 +49,56 @@ def load_knowledge_base():
     if not files: return "База законов пуста."
     
     total_chars = 0
-    print(f"📚 Читаю законы (Лимит: {MAX_LAW_CHARS} симв)...", flush=True)
+    print(f"📚 Читаю законы...", flush=True)
     
     for f_path in files:
-        if total_chars >= MAX_LAW_CHARS:
-            print("   ⚠️ Лимит объема превышен. Остальные файлы пропущены.", flush=True)
-            break
-            
+        if total_chars >= MAX_LAW_CHARS: break
         try:
             with open(f_path, 'r', encoding='utf-8') as f:
-                # Читаем файл
                 content = f.read()
-                
-                # Если файл огромный - берем только начало (первые 30к символов),
-                # но Методичку (00_) читаем полностью.
                 if "00_" not in os.path.basename(f_path) and len(content) > 30000:
-                    content = content[:30000] + "\n...[ТЕКСТ СОКРАЩЕН РОБОТОМ]..."
-                
-                full_text += f"\n\n--- ДОКУМЕНТ: {os.path.basename(f_path)} ---\n" + content
+                    content = content[:30000] + "\n...[СОКР]..."
+                full_text += f"\n\n--- ДОК: {os.path.basename(f_path)} ---\n" + content
                 total_chars += len(content)
-                print(f"   📖 Добавлен: {os.path.basename(f_path)} ({len(content)} симв)", flush=True)
         except: pass
-        
-    print(f"✅ Итоговый объем базы: {len(full_text)} символов.", flush=True)
     return full_text
 
 def get_legal_prompt(inc_type, desc, cad_id, coords, legal_db):
     return f"""
-    РОЛЬ: Юрист-эколог движения ALMA.
-    НАРУШЕНИЕ: {inc_type}. ОПИСАНИЕ: {desc}. ЛОКАЦИЯ: {cad_id} ({coords}).
+    ТЫ — Юрист-эколог движения ALMA.
+    ЗАДАЧА: Проанализировать ФОТО и ОПИСАНИЕ, составить документы.
+    
+    ВВОДНЫЕ ДАННЫЕ:
+    - Заявленное нарушение: {inc_type}
+    - Описание волонтера: {desc}
+    - Место: {cad_id} ({coords})
     
     БАЗА ЗНАНИЙ (Фрагменты):
     {legal_db}
 
-    ЗАДАЧА (СТРОГО 2 ЧАСТИ):
-    1. КОНСУЛЬТАЦИЯ ВОЛОНТЕРУ:
-       - Кратко: какая статья нарушена.
-       - Совет: что снять на фото.
+    ================================================================
+    ВАЖНЫЕ ИНСТРУКЦИИ ПО ФОРМАТИРОВАНИЮ:
+    1. ПИШИ ТОЛЬКО ОБЫЧНЫЙ ТЕКСТ.
+    2. ЗАПРЕЩЕНО использовать Markdown.
+       - НЕ ИСПОЛЬЗУЙ звездочки (**жирный**).
+       - НЕ ИСПОЛЬЗУЙ решетки (## Заголовок).
+       - НЕ ИСПОЛЬЗУЙ списки через *. Используй тире (-).
+    3. Текст должен быть готов к копированию в Word/Email без правки.
+    ================================================================
+
+    СТРУКТУРА ОТВЕТА (2 БЛОКА):
+
+    БЛОК 1: АНАЛИЗ (ДЛЯ ВОЛОНТЕРА)
+    - Посмотри на приложенное фото. Подтверждает ли оно слова волонтера?
+    - Если фото нечеткое или на нем нет нарушения — напиши об этом прямо.
+    - Укажи, какая статья нарушена.
+    - Дай совет, как улучшить фотофиксацию.
     
-    2. ЗАЯВЛЕНИЕ В АКИМАТ:
-       - Официальный стиль.
-       - ЦИТИРУЙ статьи из Базы Знаний.
-       - Укажи координаты.
-       - Подпись: "Волонтер движения ALMA".
+    БЛОК 2: ЗАЯВЛЕНИЕ (В АКИМАТ)
+    - Заголовок: ЗАЯВЛЕНИЕ (без решеток).
+    - Текст строго официальный.
+    - ЦИТИРУЙ статьи из Базы Знаний.
+    - Подпись: Волонтер движения ALMA.
     """
 
 def send_email_with_attachments(to_email, subject, body, attachment_paths):
@@ -125,17 +128,16 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
         print(f"   ❌ Ошибка почты: {e}", flush=True)
 
 def main():
-    print("🚀 ЗАПУСК ALMA 6.0 (SMART LIBRARIAN)", flush=True)
+    print("🚀 ЗАПУСК ALMA 7.0 (VISION)", flush=True)
     
     mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
     
-    # 1. ИНИЦИАЛИЗАЦИЯ
     try:
         client = genai.Client(api_key=get_env('GEMINI_API_KEY'))
     except Exception as e:
         print(f"❌ Ошибка ключа: {e}"); return
 
-    # 2. ПОИСК МОДЕЛИ
+    # ПОИСК МОДЕЛИ
     active_model = None
     print("🔍 Подбор модели...", flush=True)
     for m in MODEL_CANDIDATES:
@@ -147,10 +149,8 @@ def main():
         except: continue
             
     if not active_model:
-        print("❌ Все модели заняты или недоступны. Проверьте ключ.", flush=True)
-        return
+        print("❌ Нет доступных моделей.", flush=True); return
 
-    # 3. РАБОТА С ФАЙЛАМИ
     legal_knowledge = load_knowledge_base()
     
     if os.path.exists(PROJECT_PATH): shutil.rmtree(PROJECT_PATH)
@@ -166,8 +166,7 @@ def main():
     
     new_recs = incidents[incidents['is_sent'] == 0]
     if new_recs.empty: 
-        print("✅ Новых данных нет.", flush=True)
-        return
+        print("✅ Новых данных нет.", flush=True); return
 
     garden_files = []
     for f in glob.glob(f"{PROJECT_PATH}/*.gpkg"):
@@ -181,7 +180,6 @@ def main():
         uid = row.get('unique-id')
         print(f"\n--- Дело № {uid} ---", flush=True)
         
-        # Фото
         attachments = []
         rel_photos = photos_gdf[photos_gdf['external_pk'] == uid]
         if not rel_photos.empty:
@@ -214,14 +212,35 @@ def main():
             except: pass
         if cad_id == "Кадастровый номер не установлен": cad_id = f"Участок {coords_str}"
         
-        # ГЕНЕРАЦИЯ
-        prompt = get_legal_prompt(row.get('incident_type'), row.get('description'), cad_id, coords_str, legal_knowledge)
+        # --- ПОДГОТОВКА ЗАПРОСА (ТЕКСТ + ФОТО) ---
+        prompt_text = get_legal_prompt(row.get('incident_type'), row.get('description'), cad_id, coords_str, legal_knowledge)
         
+        # Собираем контент для Gemini
+        request_contents = [prompt_text]
+        
+        # Если есть фото - берем ПЕРВОЕ и прикрепляем к запросу
+        if attachments:
+            try:
+                img_path = attachments[0]
+                with open(img_path, 'rb') as f:
+                    img_bytes = f.read()
+                
+                # Определяем тип (jpg/png)
+                mime = 'image/png' if img_path.lower().endswith('.png') else 'image/jpeg'
+                
+                # Создаем объект изображения для AI
+                img_part = types.Part.from_bytes(data=img_bytes, mime_type=mime)
+                request_contents.append(img_part)
+                print("   📸 Фото добавлено в анализ AI.", flush=True)
+            except Exception as e:
+                print(f"   ⚠️ Не удалось прикрепить фото к анализу: {e}", flush=True)
+
+        # ГЕНЕРАЦИЯ
         try:
             print(f"   ⏳ Генерация ({active_model})...", flush=True)
             response = client.models.generate_content(
                 model=active_model,
-                contents=prompt,
+                contents=request_contents, # Отправляем и текст, и фото
                 config=types.GenerateContentConfig(
                     safety_settings=[
                         types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
