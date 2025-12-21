@@ -172,4 +172,30 @@ def main():
         if cad_id == "Кадастровый номер не установлен": cad_id = f"Участок {coords_str}"
         
         # ГЕНЕРАЦИЯ
-        prompt = get_legal_prompt
+        prompt = get_legal_prompt(row.get('incident_type'), row.get('description'), cad_id, coords_str, legal_knowledge)
+        
+        try:
+            print("   ⏳ Генерация ответа...")
+            response = model.generate_content(prompt)
+            text = response.text
+        except Exception as e:
+            err_msg = f"CRITICAL AI ERROR: {e}"
+            print(f"   ❌ {err_msg}")
+            text = f"{err_msg}\n\nРобот не смог сгенерировать текст. См. логи GitHub."
+
+        send_email_with_attachments(row.get('volunteer_email'), f"ALMA КОНСУЛЬТАЦИЯ: {cad_id}", text, attachments)
+        
+        for f in attachments:
+            try: os.remove(f)
+            except: pass
+
+        incidents.at[idx, 'cadastre_id'] = cad_id
+        incidents.at[idx, 'ai_complaint'] = text
+        incidents.at[idx, 'is_sent'] = 1
+
+    incidents.to_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE), driver="GPKG")
+    mc.push_project(PROJECT_PATH)
+    print("💾 Готово.")
+
+if __name__ == "__main__":
+    main()
