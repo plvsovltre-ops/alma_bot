@@ -1,4 +1,4 @@
-# --- ALMA 8.6: FINAL POLISH ---
+# --- ALMA 8.9: SYNC FIX & SMART COLUMN SEARCH ---
 print("🚀 SYSTEM STARTUP...", flush=True)
 
 import warnings
@@ -25,7 +25,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
-from mergin import MerginClient
+from mergin import MerginClient, ClientError # Добавили импорт ошибки
 
 print("✅ Библиотеки загружены.", flush=True)
 
@@ -39,7 +39,6 @@ CREDENTIALS_FILE = "service_account.json"
 INCIDENTS_FILE = "Инцидент.gpkg"
 PHOTOS_FILE = "photos.gpkg"
 LAWS_FOLDER = "laws"
-# Ключевые слова для гео-поиска (если поле layers пустое)
 GARDEN_KEYWORDS = ["сады", "orchards", "защищенные", "проверке", "возвращенный"]
 MAX_LAW_CHARS = 200000 
 
@@ -84,7 +83,6 @@ def setup_google_credentials():
 
 def log_to_google_sheet(data_row):
     if not os.path.exists(CREDENTIALS_FILE):
-        print(f"❌ ОШИБКА: Файл {CREDENTIALS_FILE} не физически не существует.", flush=True)
         return
     try:
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
@@ -92,7 +90,6 @@ def log_to_google_sheet(data_row):
         client_gs = gspread.authorize(creds)
         sheet = client_gs.open(GOOGLE_SHEET_NAME).sheet1
         
-        # Проверяем, есть ли заголовки, если нет - пишем
         if not sheet.get_all_values():
             headers = ["Дата", "ID Дела", "Кадастр", "Тип нарушения", "Координаты", "Ответ AI (RU)", "Ответ AI (KZ)", "Путь к фото"]
             sheet.append_row(headers)
@@ -115,11 +112,9 @@ def load_knowledge_base():
                 content = f.read()
                 filename_raw = os.path.basename(f_path)
                 doc_title = FILE_MAPPING.get(filename_raw, filename_raw)
-                # Ограничение на длинные файлы
                 if "00_" not in filename_raw and len(content) > 30000:
                     content = content[:30000] + "\n...[СОКР]..."
                 
-                # ВАЖНО: Убрал "--- ДОКУМЕНТ:", оставил просто название
                 full_text += f"\n\nИСТОЧНИК: {doc_title}\n" + content
                 total_chars += len(content)
         except: pass
@@ -134,7 +129,6 @@ def get_legal_prompt(lang, inc_type, desc, cad_id, coords, legal_db):
         phrase_photo = "На предоставленном фотоснимке зафиксировано"
     else:
         lang_instruction = "ЯЗЫК ОТВЕТА: КАЗАХСКИЙ (Қазақ тілі)."
-        # Полный глоссарий согласно Guidelines 
         glossary = """
         ТЕРМИНОЛОГИЯ (ГЛОССАРИЙ) ОБЯЗАТЕЛЬНА К ИСПОЛЬЗОВАНИЮ:
         1. "Земельная инспекция (ДУЗР)" -> "Жер ресурстарын басқару департаменті (Жер инспекциясы)".
@@ -205,26 +199,37 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
     except Exception as e:
         print(f"   ❌ Ошибка почты: {e}", flush=True)
 
+def sync_project_safely(mc, project_path):
+    """Пытается отправить изменения. Если версия устарела, обновляет и пробует снова."""
+    try:
+        mc.push_project(project_path)
+    except ClientError as e:
+        if "There is a new version" in str(e):
+            print("   ⚠️ Версия на сервере изменилась. Выполняю слияние...", flush=True)
+            try:
+                mc.pull_project(project_path) # Скачиваем изменения (v93)
+                mc.push_project(project_path) # Отправляем наши изменения поверх
+                print("   ✅ Синхронизация восстановлена.", flush=True)
+            except Exception as e2:
+                print(f"   ❌ Не удалось восстановить синхронизацию: {e2}", flush=True)
+        else:
+            print(f"   ❌ Ошибка отправки проекта: {e}", flush=True)
+
 def main():
-    print("🚀 ЗАПУСК ALMA 8.6 (FINAL FIXES)", flush=True)
+    print("🚀 ЗАПУСК ALMA 8.9 (SYNC FIX + SMART COLUMNS)", flush=True)
     
-    # 0. СОЗДАЕМ ФАЙЛ КЛЮЧЕЙ ДЛЯ ГУГЛ ТАБЛИЦ
     setup_google_credentials()
 
-    # 1. MERGIN LOGIN
     try:
         mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
         print("✅ Mergin Maps: OK", flush=True)
     except Exception as e:
         print(f"❌ MERGIN ERROR: {e}", flush=True); return
 
-    # 2. GEMINI SETUP (NEW CLIENT)
     api_key = get_env('GEMINI_API_KEY')
     if not api_key: return
-    
     client = genai.Client(api_key=api_key)
 
-    # 3. ПОДБОР МОДЕЛИ
     print("🔍 Проверка связи с AI...", flush=True)
     active_model_name = None
     for m in MODEL_CANDIDATES:
@@ -257,7 +262,6 @@ def main():
     if new_recs.empty: 
         print("✅ Новых данных нет.", flush=True); return
 
-    # Кэшируем файлы садов для гео-поиска (запасной вариант)
     garden_files = []
     for f in glob.glob(f"{PROJECT_PATH}/*.gpkg"):
         if os.path.basename(f) not in [INCIDENTS_FILE, PHOTOS_FILE]:
@@ -270,7 +274,7 @@ def main():
         uid = str(row.get('unique-id'))
         print(f"\n--- Дело № {uid} ---", flush=True)
         
-        # ФОТО
+        # --- ФОТО ---
         attachments = []
         incident_photo_dir = os.path.join(ARCHIVE_PATH, "PHOTOS", f"{datetime.now().strftime('%Y-%m-%d')}_{uid}")
         os.makedirs(incident_photo_dir, exist_ok=True)
@@ -287,33 +291,52 @@ def main():
                         shutil.copy2(src, dst)
                         attachments.append(dst)
 
-        # КООРДИНАТЫ
+        # --- КООРДИНАТЫ ---
         if incidents.crs != "EPSG:4326":
             p_geo = gpd.GeoDataFrame([row], crs=incidents.crs).to_crs("EPSG:4326").iloc[0].geometry
         else: p_geo = row.geometry
         coords_str = f"{p_geo.y:.6f}, {p_geo.x:.6f}"
         
-        # --- ЛОГИКА ОПРЕДЕЛЕНИЯ КАДАСТРА/СЛОЯ ---
+        # --- ОПРЕДЕЛЕНИЕ КАДАСТРОВОГО НОМЕРА ---
         cad_id = None
         
-        # 1. Сначала ищем в поле 'layers' (как указал пользователь)
+        # 1. Сначала проверяем поле 'layers' в самом инциденте
         if 'layers' in row:
-            cad_id = row.get('layers')
+            val = row.get('layers')
+            if val and str(val).strip():
+                cad_id = str(val)
         
-        # 2. Если поле 'layers' пустое или его нет, пробуем геометрию (запасной вариант)
+        # 2. Если не найдено, ищем гео-пересечение с файлами садов
         if not cad_id:
             for g_file in garden_files:
                 try:
                     temp_gdf = gpd.read_file(g_file).to_crs("EPSG:4326")
-                    if not temp_gdf[temp_gdf.contains(p_geo)].empty:
-                        cad_id = os.path.splitext(os.path.basename(g_file))[0]
+                    matches = temp_gdf[temp_gdf.contains(p_geo)]
+                    
+                    if not matches.empty:
+                        match_row = matches.iloc[0]
+                        # УМНЫЙ ПОИСК КОЛОНКИ: ищем что-то похожее на 'layer'
+                        found_col = None
+                        for col in match_row.index:
+                            if 'layer' in col.lower() or 'kadastr' in col.lower() or 'name' in col.lower():
+                                found_col = col
+                                break
+                        
+                        if found_col:
+                             cad_id = str(match_row[found_col])
+                             print(f"   🎯 Найдено в поле '{found_col}' слоя {os.path.basename(g_file)} -> {cad_id}", flush=True)
+                        else:
+                            cad_id = os.path.splitext(os.path.basename(g_file))[0]
+                            print(f"   ⚠️ Поле layers не найдено, взято имя файла: {cad_id}", flush=True)
+                            # Вывод доступных колонок для отладки
+                            print(f"   (Доступные колонки: {list(match_row.index)})", flush=True)
                         break
-                except: pass
+                except Exception as e: pass
         
         if not cad_id:
             cad_id = "Не указан"
 
-        # ГЕНЕРАЦИЯ
+        # --- ГЕНЕРАЦИЯ ---
         responses = {"RU": "", "KZ": ""}
 
         for lang in ["RU", "KZ"]:
@@ -328,14 +351,12 @@ def main():
                 except: pass
 
             try:
-                # ВАЖНО: temperature=0.0 для более строгого следования инструкциям
                 resp = client.models.generate_content(
                     model=active_model_name,
                     contents=contents_list,
                     config=types.GenerateContentConfig(temperature=0.0)
                 )
                 
-                # Принудительная очистка от Markdown (на всякий случай)
                 clean_text = resp.text.replace("**", "").replace("##", "").replace("--- ДОКУМЕНТ:", "")
                 responses[lang] = clean_text
                 
@@ -345,7 +366,7 @@ def main():
             except Exception as e:
                 print(f"   ❌ Ошибка AI {lang}: {e}", flush=True)
 
-        # GOOGLE SHEETS ЗАПИСЬ
+        # --- GOOGLE SHEETS ---
         sheet_row = [
             datetime.now().strftime("%Y-%m-%d %H:%M"),
             uid, 
@@ -362,8 +383,12 @@ def main():
         incidents.at[idx, 'ai_complaint'] = responses["RU"]
         incidents.at[idx, 'is_sent'] = 1
 
+    # Сохраняем локально
     incidents.to_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE), driver="GPKG")
-    mc.push_project(PROJECT_PATH)
+    
+    # Безопасная синхронизация
+    sync_project_safely(mc, PROJECT_PATH)
+    
     print("💾 Готово.", flush=True)
 
 if __name__ == "__main__":
