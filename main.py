@@ -1,4 +1,4 @@
-# --- ALMA 8.5: STABLE EDITION ---
+# --- ALMA 8.5: STABLE EDITION (FIXED AI CLIENT) ---
 print("🚀 SYSTEM STARTUP...", flush=True)
 
 import warnings
@@ -12,10 +12,11 @@ import time
 import pandas as pd
 import geopandas as gpd
 from datetime import datetime
+import PIL.Image  # Для обработки изображений
 
-# --- ВАЖНОЕ ИЗМЕНЕНИЕ: ИСПОЛЬЗУЕМ СТАНДАРТНУЮ БИБЛИОТЕКУ ---
-import google.generativeai as genai
-from google.ai.generativelanguage import Content, Part
+# --- ВАЖНОЕ ИЗМЕНЕНИЕ: ИСПОЛЬЗУЕМ НОВУЮ БИБЛИОТЕКУ (КАК ВЧЕРА) ---
+from google import genai
+from google.genai import types
 
 # Гугл Таблицы
 import gspread
@@ -35,17 +36,15 @@ ARCHIVE_PATH = "./ALMA_ARCHIVE"
 GOOGLE_SHEET_NAME = "ALMA_Registry"
 CREDENTIALS_FILE = "service_account.json"
 
-INCIDENTS_FILE = "Инцидент.gpkg" 
+INCIDENTS_FILE = "Инцидент.gpkg"
 PHOTOS_FILE = "photos.gpkg"
 LAWS_FOLDER = "laws"
 GARDEN_KEYWORDS = ["сады", "orchards", "защищенные", "проверке", "возвращенный"]
 MAX_LAW_CHARS = 200000 
 
+# Используем модель, которая точно работала вчера
 MODEL_CANDIDATES = [
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-pro",
-    "gemini-pro-vision" # Резерв для картинок
+    "gemini-2.0-flash-exp"
 ]
 
 FILE_MAPPING = {
@@ -82,9 +81,12 @@ def log_to_google_sheet(data_row):
         creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
         client_gs = gspread.authorize(creds)
         sheet = client_gs.open(GOOGLE_SHEET_NAME).sheet1
-        if not sheet.cell(1, 1).value:
+        
+        # Если таблица пустая, добавляем заголовки
+        if not sheet.get_all_values():
             headers = ["Дата", "ID Дела", "Кадастр", "Тип нарушения", "Координаты", "Ответ AI (RU)", "Ответ AI (KZ)", "Локальный путь к фото"]
             sheet.append_row(headers)
+        
         sheet.append_row(data_row)
         print("   📊 Записано в Google Sheets.", flush=True)
     except Exception as e:
@@ -180,7 +182,7 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
         print(f"   ❌ Ошибка почты: {e}", flush=True)
 
 def main():
-    print("🚀 ЗАПУСК ALMA 8.5 (STABLE)", flush=True)
+    print("🚀 ЗАПУСК ALMA 8.5 (STABLE + NEW AI)", flush=True)
     
     # 1. MERGIN LOGIN
     try:
@@ -189,19 +191,20 @@ def main():
     except Exception as e:
         print(f"❌ MERGIN ERROR: {e}", flush=True); return
 
-    # 2. GEMINI SETUP (STABLE)
+    # 2. GEMINI SETUP (NEW CLIENT)
     api_key = get_env('GEMINI_API_KEY')
     if not api_key: return
     
-    genai.configure(api_key=api_key)
+    # Инициализация нового клиента
+    client = genai.Client(api_key=api_key)
 
     # 3. ПОДБОР МОДЕЛИ
     print("🔍 Проверка связи с AI...", flush=True)
     active_model_name = None
     for m in MODEL_CANDIDATES:
         try:
-            model = genai.GenerativeModel(m)
-            model.generate_content("Ping")
+            # Новый синтаксис проверки
+            client.models.generate_content(model=m, contents="Ping")
             print(f"   ✅ Модель {m} отвечает!", flush=True)
             active_model_name = m
             break
@@ -274,27 +277,29 @@ def main():
                     break
             except: pass
 
-        # ГЕНЕРАЦИЯ
+        # ГЕНЕРАЦИЯ (НОВЫЙ SDK)
         responses = {"RU": "", "KZ": ""}
-        model = genai.GenerativeModel(active_model_name)
 
         for lang in ["RU", "KZ"]:
             print(f"   🧬 Генерация {lang}...", flush=True)
             prompt = get_legal_prompt(lang, row.get('incident_type'), row.get('description'), cad_id, coords_str, legal_knowledge)
             
-            # Собираем контент для старого SDK
-            content_parts = [prompt]
+            # Собираем контент для НОВОГО SDK
+            # Он принимает список, где могут быть строки и PIL Image
+            contents_list = [prompt]
+            
             for img_path in attachments:
                 try:
-                    # Для старого SDK нужно загружать картинки через PIL или mime
-                    import PIL.Image
                     img = PIL.Image.open(img_path)
-                    content_parts.append(img)
+                    contents_list.append(img)
                 except: pass
 
             try:
-                # ВАЖНО: Старый метод generate_content
-                resp = model.generate_content(content_parts, generation_config=genai.types.GenerationConfig(temperature=0.0))
+                resp = client.models.generate_content(
+                    model=active_model_name,
+                    contents=contents_list,
+                    config=types.GenerateContentConfig(temperature=0.0)
+                )
                 responses[lang] = resp.text
                 
                 subj = f"ALMA {'КОНСУЛЬТАЦИЯ (RU)' if lang=='RU' else 'КЕҢЕСІ (KZ)'}: {cad_id}"
