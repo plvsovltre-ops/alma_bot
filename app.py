@@ -1,8 +1,8 @@
 import streamlit as st
 import os
 import glob
-from google import genai
-from google.genai import types
+import google.generativeai as genai
+import PIL.Image
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Юрист АЛМА / ALMA Заңгері", page_icon="⚖️", layout="centered")
@@ -19,7 +19,7 @@ st.markdown("""
 st.title("⚖️ Юрист АЛМА (Alma Zanger)")
 st.caption("Виртуальный консультант по защите предгорий / Тау бөктерін қорғау жөніндегі виртуалды кеңесші")
 
-# --- 2. ВЫБОР ЯЗЫКА (СТРОГОЕ РАЗДЕЛЕНИЕ) ---
+# --- 2. ВЫБОР ЯЗЫКА ---
 with st.container():
     selected_lang = st.radio(
         "Выберите язык / Тілді таңдаңыз:",
@@ -28,38 +28,37 @@ with st.container():
         index=0
     )
 
-# --- 3. НАСТРОЙКА МОДЕЛЕЙ (FAILSAFE) ---
-MODEL_CANDIDATES = [
-    "gemini-1.5-flash-002",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-001",
-    "gemini-1.5-pro",
-    "gemini-2.0-flash-exp"
-]
-
+# --- 3. НАСТРОЙКА API ---
 api_key = st.secrets.get("GEMINI_API_KEY")
 if not api_key:
     st.error("Ошибка: Не найден API ключ (GEMINI_API_KEY).")
     st.stop()
 
-try:
-    client = genai.Client(api_key=api_key)
-except Exception as e:
-    st.error(f"Error creating client: {e}")
-    st.stop()
+# Настраиваем стабильную библиотеку
+genai.configure(api_key=api_key)
+
+# Список моделей (Сначала пробуем 1.5 Flash, потом Pro)
+MODEL_CANDIDATES = [
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-pro",
+    "gemini-pro-vision"
+]
 
 @st.cache_resource
-def get_working_model():
+def get_working_model_name():
+    """Проверяет, какая модель доступна"""
     for model_name in MODEL_CANDIDATES:
         try:
-            client.models.generate_content(model=model_name, contents="Ping")
+            model = genai.GenerativeModel(model_name)
+            model.generate_content("Ping")
             return model_name
         except Exception:
             continue
     return None
 
-active_model = get_working_model()
-if not active_model:
+active_model_name = get_working_model_name()
+if not active_model_name:
     st.error("Сервер перегружен. Попробуйте позже.")
     st.stop()
 
@@ -75,7 +74,7 @@ if not agreement:
     st.info("Нажмите галочку выше, чтобы начать. / Бастау үшін жоғарыдағы құсбелгіні қойыңыз.")
     st.stop()
 
-# --- 5. ЗАГРУЗКА БАЗЫ ЗНАНИЙ (С КРАСИВЫМИ ИМЕНАМИ) ---
+# --- 5. ЗАГРУЗКА БАЗЫ ЗНАНИЙ ---
 FILE_MAPPING = {
     "00_guidelines.txt": "Руководство и Стратегия ALMA",
     "01_land_code.txt": "Земельный кодекс РК",
@@ -109,7 +108,6 @@ def load_knowledge():
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 filename_raw = os.path.basename(file_path)
-                # Подставляем красивое имя из словаря
                 doc_title = FILE_MAPPING.get(filename_raw, filename_raw)
                 knowledge += f"\n\n--- ДОКУМЕНТ: {doc_title} ---\n"
                 knowledge += f.read()
@@ -123,7 +121,7 @@ knowledge_base = load_knowledge()
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Очистка истории при смене языка
+# Очистка при смене языка
 if "last_lang" not in st.session_state:
     st.session_state.last_lang = selected_lang
 if st.session_state.last_lang != selected_lang:
@@ -138,14 +136,13 @@ if not st.session_state.messages:
         welcome = "Сәлеметсіз бе! Мәселені сипаттаңыз немесе бұзушылықтың суретін тіркеңіз."
     st.session_state.messages.append({"role": "assistant", "content": welcome})
 
-# Вывод сообщений
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         if "image" in msg:
-            st.image(msg["image"], caption="Загруженное фото / Жүктелген фото", width=300)
+            st.image(msg["image"], caption="Загруженное фото", width=300)
         st.write(msg["content"])
 
-# Загрузка файла
+# Загрузка фото
 label_upload = "📸 Загрузить фото (Опционально) / Фотосурет жүктеу (Міндетті емес)"
 with st.expander(label_upload):
     uploaded_file = st.file_uploader("", type=["jpg", "jpeg", "png"])
@@ -156,17 +153,14 @@ if prompt := st.chat_input(prompt_text):
     # Сохраняем сообщение пользователя
     user_msg_obj = {"role": "user", "content": prompt}
     
-    image_part = None
+    # Обработка фото для PIL (стабильная библиотека)
+    pil_image = None
     if uploaded_file:
         user_msg_obj["image"] = uploaded_file
         try:
-            image_bytes = uploaded_file.getvalue()
-            image_part = types.Part.from_bytes(
-                data=image_bytes,
-                mime_type=uploaded_file.type
-            )
+            pil_image = PIL.Image.open(uploaded_file)
         except Exception as e:
-            st.error(f"Ошибка фото: {e}")
+            st.error(f"Ошибка обработки фото: {e}")
 
     st.session_state.messages.append(user_msg_obj)
     
@@ -179,7 +173,7 @@ if prompt := st.chat_input(prompt_text):
         placeholder = st.empty()
         full_response = ""
         
-        # --- ЛОГИКА ВЫБОРА ЯЗЫКА ---
+        # Выбор языка
         if "Русский" in selected_lang:
             target_lang = "РУССКИЙ"
             forbidden_lang = "Казахский"
@@ -199,29 +193,27 @@ if prompt := st.chat_input(prompt_text):
         ===============================================
         
         ИНСТРУКЦИЯ ПО СУТИ:
-        1. ИСТОЧНИКИ: Ссылайся ТОЛЬКО на названия документов, указанные после "--- ДОКУМЕНТ:". НИКОГДА не пиши имена файлов (типа .txt).
+        1. ИСТОЧНИКИ: Ссылайся ТОЛЬКО на названия документов (после "--- ДОКУМЕНТ:"). НИКОГДА не пиши имена файлов (типа .txt).
         2. ФОТО: Если загружено фото, сначала опиши нарушения, которые ты видишь (склоны, техника, деревья).
         3. АЛГОРИТМ: Если в Guidelines указан Сценарий А (Критическая угроза) — предложи обратиться в Земельную инспекцию (ДУЗР).
         4. Не выдумывай законы. Если информации нет — скажи честно.
         """
 
-        request_contents = [system_instruction, prompt]
-        if image_part:
-            request_contents.append(image_part)
+        # Подготовка контента для старой версии API
+        request_content = [system_instruction, prompt]
+        if pil_image:
+            request_content.append(pil_image)
 
         try:
-            response = client.models.generate_content(
-                model=active_model,
-                contents=request_contents,
-                config=types.GenerateContentConfig(
+            # Инициализация модели
+            model = genai.GenerativeModel(active_model_name)
+            
+            # Генерация (Старый синтаксис)
+            response = model.generate_content(
+                request_content,
+                generation_config=genai.types.GenerationConfig(
                     temperature=0.0,
-                    max_output_tokens=8000,
-                    safety_settings=[
-                        types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
-                        types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
-                        types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
-                        types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE')
-                    ]
+                    max_output_tokens=8000
                 )
             )
             full_response = response.text
