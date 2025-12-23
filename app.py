@@ -1,8 +1,11 @@
 import streamlit as st
 import os
 import glob
-import google.generativeai as genai
 import PIL.Image
+
+# --- ИСПОЛЬЗУЕМ НОВУЮ БИБЛИОТЕКУ (КАК В ROBOT) ---
+from google import genai
+from google.genai import types
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Юрист АЛМА / ALMA Заңгері", page_icon="⚖️", layout="centered")
@@ -31,36 +34,46 @@ with st.container():
 # --- 3. НАСТРОЙКА API ---
 api_key = st.secrets.get("GEMINI_API_KEY")
 if not api_key:
+    # Пытаемся взять из переменных среды, если нет в секретах Streamlit
+    api_key = os.environ.get("GEMINI_API_KEY")
+
+if not api_key:
     st.error("Ошибка: Не найден API ключ (GEMINI_API_KEY).")
     st.stop()
 
-# Настраиваем стабильную библиотеку
-genai.configure(api_key=api_key)
+# Инициализация нового клиента
+try:
+    client = genai.Client(api_key=api_key)
+except Exception as e:
+    st.error(f"Ошибка клиента AI: {e}")
+    st.stop()
 
-# Список моделей (Сначала пробуем 1.5 Flash, потом Pro)
+# Список моделей (Добавлена рабочая gemini-2.0-flash-exp)
 MODEL_CANDIDATES = [
+    "gemini-2.0-flash-exp",
     "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-pro",
-    "gemini-pro-vision"
+    "gemini-1.5-pro"
 ]
 
 @st.cache_resource
 def get_working_model_name():
-    """Проверяет, какая модель доступна"""
+    """Проверяет, какая модель доступна, используя новый SDK"""
     for model_name in MODEL_CANDIDATES:
         try:
-            model = genai.GenerativeModel(model_name)
-            model.generate_content("Ping")
+            client.models.generate_content(model=model_name, contents="Ping")
             return model_name
         except Exception:
             continue
     return None
 
 active_model_name = get_working_model_name()
+
 if not active_model_name:
-    st.error("Сервер перегружен. Попробуйте позже.")
+    st.error("Сервер перегружен или ключ не подходит к моделям. Попробуйте позже.")
     st.stop()
+else:
+    # Показываем (для отладки можно убрать), какая модель подхватилась
+    print(f"Streamlit active model: {active_model_name}")
 
 # --- 4. ДИСКЛЕЙМЕР ---
 with st.expander("📜 Условия использования / Пайдалану шарттары", expanded=True):
@@ -97,8 +110,13 @@ FILE_MAPPING = {
 def load_knowledge():
     knowledge = ""
     folder_path = "laws"
+    # Проверка существования папки (Streamlit Cloud sometimes needs relative paths)
     if not os.path.exists(folder_path):
-        return "ERROR: Folder 'laws' not found."
+        # Попробуем поискать в текущей директории или уровнем выше
+        if os.path.exists("./laws"):
+            folder_path = "./laws"
+        else:
+            return "ERROR: Folder 'laws' not found."
     
     files = sorted(glob.glob(os.path.join(folder_path, "*.txt")))
     if not files:
@@ -153,7 +171,7 @@ if prompt := st.chat_input(prompt_text):
     # Сохраняем сообщение пользователя
     user_msg_obj = {"role": "user", "content": prompt}
     
-    # Обработка фото для PIL (стабильная библиотека)
+    # Обработка фото
     pil_image = None
     if uploaded_file:
         user_msg_obj["image"] = uploaded_file
@@ -199,19 +217,17 @@ if prompt := st.chat_input(prompt_text):
         4. Не выдумывай законы. Если информации нет — скажи честно.
         """
 
-        # Подготовка контента для старой версии API
-        request_content = [system_instruction, prompt]
+        # Подготовка контента для НОВОЙ версии API
+        contents_list = [system_instruction, prompt]
         if pil_image:
-            request_content.append(pil_image)
+            contents_list.append(pil_image)
 
         try:
-            # Инициализация модели
-            model = genai.GenerativeModel(active_model_name)
-            
-            # Генерация (Старый синтаксис)
-            response = model.generate_content(
-                request_content,
-                generation_config=genai.types.GenerationConfig(
+            # Генерация (НОВЫЙ синтаксис)
+            response = client.models.generate_content(
+                model=active_model_name,
+                contents=contents_list,
+                config=types.GenerateContentConfig(
                     temperature=0.0,
                     max_output_tokens=8000
                 )
