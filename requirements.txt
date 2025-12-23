@@ -1,7 +1,7 @@
 mergin-client
 geopandas
 pandas
-google-generativeai
+google-genai
 pyogrio
 streamlit
 gspread
