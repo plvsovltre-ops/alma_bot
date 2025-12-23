@@ -1,4 +1,4 @@
-# --- ALMA 8.3: GOOGLE SHEETS INTEGRATION ---
+# --- ALMA 8.4: DIAGNOSTIC MODE ---
 print("🚀 SYSTEM STARTUP...", flush=True)
 
 import warnings
@@ -15,7 +15,7 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 
-# Для Гугл Таблиц
+# Гугл Таблицы
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -30,10 +30,7 @@ print("✅ Библиотеки загружены.", flush=True)
 MERGIN_PROJECT = "ALMA_exmachina/alma_bot"
 PROJECT_PATH = "./project"
 ARCHIVE_PATH = "./ALMA_ARCHIVE"
-
-# ИМЯ ВАШЕЙ ТАБЛИЦЫ В GOOGLE (Должно совпадать точно!)
 GOOGLE_SHEET_NAME = "ALMA_Registry"
-# Файл с ключом (должен лежать рядом с main.py)
 CREDENTIALS_FILE = "service_account.json"
 
 INCIDENTS_FILE = "Инцидент.gpkg" 
@@ -70,45 +67,36 @@ os.makedirs(os.path.join(ARCHIVE_PATH, "PHOTOS"), exist_ok=True)
 
 def get_env(name):
     val = os.environ.get(name)
-    if not val: print(f"⚠️ Секрет {name} не найден!")
+    if not val: print(f"⚠️ ВНИМАНИЕ: Секрет {name} не найден в настройках!", flush=True)
     return val
 
-# --- ФУНКЦИЯ ПОДКЛЮЧЕНИЯ К GOOGLE SHEETS ---
 def log_to_google_sheet(data_row):
-    """
-    data_row: список [Дата, ID, Кадастр, Тип, Координаты, ТекстRU, ТекстKZ, ПутьКФото]
-    """
     if not os.path.exists(CREDENTIALS_FILE):
-        print(f"❌ ОШИБКА: Нет файла {CREDENTIALS_FILE}. Запись в таблицу невозможна.")
+        print(f"❌ ОШИБКА: Файл {CREDENTIALS_FILE} не найден. Таблицы не работают.", flush=True)
         return
 
     try:
-        # Настройка доступа
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
         client_gs = gspread.authorize(creds)
-
-        # Открываем таблицу
         sheet = client_gs.open(GOOGLE_SHEET_NAME).sheet1
-
-        # Проверка заголовков (если первая ячейка пустая, добавляем шапку)
         if not sheet.cell(1, 1).value:
             headers = ["Дата", "ID Дела", "Кадастр", "Тип нарушения", "Координаты", "Ответ AI (RU)", "Ответ AI (KZ)", "Локальный путь к фото"]
             sheet.append_row(headers)
-        
-        # Запись данных
         sheet.append_row(data_row)
-        print("   📊 Данные записаны в Google Sheets.", flush=True)
-
+        print("   📊 Данные успешно записаны в Google Sheets.", flush=True)
     except Exception as e:
-        print(f"   ❌ Ошибка Google Sheets: {e}", flush=True)
+        print(f"   ❌ ОШИБКА Google Sheets: {e}", flush=True)
 
 def load_knowledge_base():
     full_text = ""
     files = sorted(glob.glob(os.path.join(LAWS_FOLDER, "*.txt")))
-    if not files: return "База законов пуста."
+    if not files: 
+        print("⚠️ ПРЕДУПРЕЖДЕНИЕ: Папка laws пуста или не найдена.", flush=True)
+        return "База законов пуста."
+    
     total_chars = 0
-    print(f"📚 Читаю законы...", flush=True)
+    print(f"📚 Читаю законы ({len(files)} файлов)...", flush=True)
     for f_path in files:
         if total_chars >= MAX_LAW_CHARS: break
         try:
@@ -167,7 +155,9 @@ def get_legal_prompt(lang, inc_type, desc, cad_id, coords, legal_db):
 def send_email_with_attachments(to_email, subject, body, attachment_paths):
     sender = get_env('MERGIN_USER') 
     password = get_env('GMAIL_APP_PASS')
-    if not sender or not password: return
+    if not sender or not password: 
+        print("❌ ОШИБКА: Нет логина/пароля для почты.", flush=True)
+        return
 
     msg = MIMEMultipart()
     msg['From'] = sender
@@ -190,40 +180,65 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
             s.send_message(msg)
         print(f"   ✉️ Почта отправлена ({subject})", flush=True)
     except Exception as e:
-        print(f"   ❌ Ошибка почты: {e}", flush=True)
+        print(f"   ❌ ОШИБКА отправки почты: {e}", flush=True)
 
 def main():
-    print("🚀 ЗАПУСК ALMA 8.3 (GOOGLE SHEETS)", flush=True)
+    print("🚀 ЗАПУСК ALMA 8.4 (DIAGNOSTIC)", flush=True)
     
-    mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
-    
-    try: client = genai.Client(api_key=get_env('GEMINI_API_KEY'))
-    except: return
+    # 1. ПРОВЕРКА MERGIN
+    try:
+        mc = MerginClient("https://app.merginmaps.com", login=get_env('MERGIN_USER'), password=get_env('MERGIN_PASS'))
+        print("✅ Mergin Maps: Вход выполнен.", flush=True)
+    except Exception as e:
+        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА MERGIN: {e}", flush=True)
+        return
 
+    # 2. ПРОВЕРКА GEMINI
+    try:
+        api_key = get_env('GEMINI_API_KEY')
+        if not api_key: raise ValueError("Ключ пустой")
+        client = genai.Client(api_key=api_key)
+    except Exception as e:
+        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА GEMINI KEY: {e}", flush=True)
+        return
+
+    # 3. ПОДБОР МОДЕЛИ
+    print("🔍 Проверка связи с нейросетью...", flush=True)
     active_model = None
     for m in MODEL_CANDIDATES:
         try:
             client.models.generate_content(model=m, contents="Ping")
-            active_model = m; break
-        except: continue
-    if not active_model: return
+            print(f"   ✅ Модель {m} работает!", flush=True)
+            active_model = m
+            break
+        except Exception as e:
+            print(f"   ⚠️ Модель {m} не отвечает: {e}", flush=True)
+            continue
+            
+    if not active_model:
+        print("❌ ВСЕ МОДЕЛИ GEMINI НЕДОСТУПНЫ. Проверьте ключ или лимиты.", flush=True)
+        return
 
     legal_knowledge = load_knowledge_base()
     
     if os.path.exists(PROJECT_PATH): shutil.rmtree(PROJECT_PATH)
-    mc.download_project(MERGIN_PROJECT, PROJECT_PATH)
+    try:
+        mc.download_project(MERGIN_PROJECT, PROJECT_PATH)
+    except Exception as e:
+        print(f"❌ Ошибка скачивания проекта: {e}", flush=True); return
 
     try:
         incidents = gpd.read_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE))
         photos_gdf = gpd.read_file(os.path.join(PROJECT_PATH, PHOTOS_FILE))
-    except: return
+    except Exception as e:
+        print(f"❌ Ошибка чтения GPKG файлов: {e}", flush=True); return
 
     if 'is_sent' not in incidents.columns: incidents['is_sent'] = 0
     incidents['is_sent'] = incidents['is_sent'].fillna(0).astype(int)
     new_recs = incidents[incidents['is_sent'] == 0]
     
     if new_recs.empty: 
-        print("✅ Новых данных нет.", flush=True); return
+        print("✅ Новых данных нет. Ожидание...", flush=True); return
 
     garden_files = []
     for f in glob.glob(f"{PROJECT_PATH}/*.gpkg"):
@@ -231,13 +246,12 @@ def main():
             if any(k in os.path.basename(f).lower() for k in GARDEN_KEYWORDS):
                 garden_files.append(f)
 
-    print(f"⚡ Обработка {len(new_recs)} дел.", flush=True)
+    print(f"⚡ Найдено {len(new_recs)} новых дел.", flush=True)
 
     for idx, row in new_recs.iterrows():
         uid = str(row.get('unique-id'))
         print(f"\n--- Дело № {uid} ---", flush=True)
         
-        # 1. АРХИВАЦИЯ ФОТО
         attachments = []
         incident_photo_dir = os.path.join(ARCHIVE_PATH, "PHOTOS", f"{datetime.now().strftime('%Y-%m-%d')}_{uid}")
         os.makedirs(incident_photo_dir, exist_ok=True)
@@ -254,7 +268,6 @@ def main():
                         shutil.copy2(src, dst)
                         attachments.append(dst)
 
-        # КООРДИНАТЫ И КАДАСТР
         if incidents.crs != "EPSG:4326":
             p_geo = gpd.GeoDataFrame([row], crs=incidents.crs).to_crs("EPSG:4326").iloc[0].geometry
         else: p_geo = row.geometry
@@ -269,7 +282,6 @@ def main():
                     break
             except: pass
 
-        # 2. ГЕНЕРАЦИЯ И ОТПРАВКА
         responses = {"RU": "", "KZ": ""}
         for lang in ["RU", "KZ"]:
             print(f"   🧬 Генерация {lang}...", flush=True)
@@ -289,10 +301,9 @@ def main():
                 send_email_with_attachments(row.get('volunteer_email'), subj, resp.text, attachments)
                 time.sleep(2)
             except Exception as e:
-                print(f"   ❌ Ошибка {lang}: {e}")
+                print(f"   ❌ Ошибка генерации {lang}: {e}", flush=True)
 
         # 3. ЗАПИСЬ В GOOGLE SHEETS
-        # Формируем строку данных
         sheet_row = [
             datetime.now().strftime("%Y-%m-%d %H:%M"),
             uid,
@@ -301,19 +312,17 @@ def main():
             coords_str,
             responses["RU"],
             responses["KZ"],
-            os.path.abspath(incident_photo_dir) # Локальный путь, чтобы знать где искать оригиналы
+            os.path.abspath(incident_photo_dir)
         ]
-        
         log_to_google_sheet(sheet_row)
 
-        # Обновление Mergin
         incidents.at[idx, 'cadastre_id'] = cad_id
         incidents.at[idx, 'ai_complaint'] = responses["RU"]
         incidents.at[idx, 'is_sent'] = 1
 
     incidents.to_file(os.path.join(PROJECT_PATH, INCIDENTS_FILE), driver="GPKG")
     mc.push_project(PROJECT_PATH)
-    print("💾 Все данные обработаны.", flush=True)
+    print("💾 Все данные обработаны и отправлены.", flush=True)
 
 if __name__ == "__main__":
     main()
