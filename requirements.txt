@@ -4,3 +4,5 @@ pandas
 google-genai
 pyogrio
 streamlit
+gspread
+oauth2client
