@@ -1,3 +1,11 @@
+"""Historical pre-Legal-Core prototype.
+
+This Streamlit application is retained as development history. It is not part
+of the current ALMA Monitor runtime and must not be deployed for legal-reference
+selection. Current legal references come only from exact, human-reviewed Legal
+Core cards and deterministic application rules.
+"""
+
 import streamlit as st
 import os
 import glob

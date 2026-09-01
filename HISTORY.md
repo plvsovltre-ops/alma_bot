@@ -1,5 +1,15 @@
 # Release history
 
+## Unreleased — operational-status documentation
+
+- Records the distinction between the launched ALMA Monitor v1 closed pilot,
+  the current Monitor 2 hardening, and a future unrestricted public service.
+- Marks `app.py` and `laws/` as historical pre-Legal-Core materials outside the
+  production image.
+- Aligns the Legal Core readme with the 15 August 2026 hash-bound activation.
+- Aligns public-release, delivery, privacy, and retention notes without changing
+  runtime behavior or any Legal Core approval.
+
 ## 1.5.2
 
 - Keeps verified field photographs in private Mergin Maps storage instead of
