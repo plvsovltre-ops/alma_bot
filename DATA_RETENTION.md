@@ -13,6 +13,22 @@ The repository has no production field data. In a deployed ALMA Monitor:
 - service logs are kept according to the cloud project's logging policy;
 - the authoritative field record remains subject to the Mergin project policy.
 
+## Verified archive rollover
+
+> **Monitor 2 operational control — not implemented by the v1 reference worker.**
+
+Archiving does not discard the evidence dossier. Before any Mergin media is
+removed, the original photographs and other evidence are copied to the private
+EvidenceStorage with their observation ID, MIME type, size and SHA-256 manifest.
+A restore test must successfully reconstruct the originals before deletion is
+allowed. Email is a delivery channel, not an archive.
+
+After a verified rollover, the active Mergin project keeps a lightweight,
+read-only point layer containing the observation ID, time, topics and archive
+status. This preserves the map and the link to the archived dossier without
+keeping every photograph in the active project. A partial archive, missing
+object or unknown path blocks deletion and requires operator review.
+
 The reference code does not yet erase durable incident state or registry rows
 automatically. Before allowing public data collection, the operator must approve
 and enforce concrete retention periods, access roles, backup rules, and a tested
