@@ -1,5 +1,11 @@
 # Privacy and field-data boundary
 
+> **Scope:** this file documents the public v1 reference boundary. The current
+> controlled Monitor 2 successor may attach reviewed evidence photos to the
+> allowlisted participant's dossier. Its exact operational status is described
+> in [`docs/OPERATIONAL_STATUS.md`](docs/OPERATIONAL_STATUS.md). This does not
+> authorize unrestricted enrolment or public disclosure of field evidence.
+
 This public repository contains software and synthetic examples only. Do not
 commit real observations, photographs, names, email addresses, exact sensitive
 locations, cadastral records, or credentials.

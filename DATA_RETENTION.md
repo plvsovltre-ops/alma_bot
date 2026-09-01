@@ -1,5 +1,10 @@
 # Data-retention policy for deployments
 
+> **Scope:** this is the v1 reference policy. Current Monitor 2 archive and
+> verified rollover controls are operational controls outside this public v1
+> source tree. They do not replace the need for an approved retention schedule
+> before unrestricted public collection.
+
 The repository has no production field data. In a deployed ALMA Monitor:
 
 - the downloaded Mergin project is temporary working data for one job;

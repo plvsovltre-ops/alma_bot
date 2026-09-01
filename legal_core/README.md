@@ -80,11 +80,14 @@ Changing the policy after approval invalidates its hash and stops processing.
 
 ## Public governance overlay
 
-The proposed `kz-alma-public-0.1.0-rc1` overlay is blocked by default. Its
-proposal binds the exact card, source, owner-review, runtime-policy, territory,
-and human-response artifacts. A second manifest hash binds the exact 32-object
-lawyer view produced from those files. This prevents a changed exporter from
-hiding a governed object while leaving the underlying artifact hashes intact.
+The exact `kz-alma-public-0.1.0-rc1` overlay was independently reviewed and
+activated on 15 August 2026. Public mode remains fail-closed by default and can
+open only when the checked-in governance records validate the exact package.
+The proposal binds the exact card, source, owner-review, runtime-policy,
+territory, and human-response artifacts. A second manifest hash binds the exact
+32-object lawyer view produced from those files. This prevents a changed
+exporter from hiding a governed object while leaving the underlying artifact
+hashes intact.
 
 The review view has 18 active cards, five signal mappings (including the
 bilingual public-interest and action text), four competent-authority routes

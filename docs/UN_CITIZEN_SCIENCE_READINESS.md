@@ -1,7 +1,9 @@
 # Citizen science release readiness
 
-This note supports an open release of ALMA Monitor as a reusable citizen science
-reference implementation. It does not claim United Nations endorsement.
+This note supports a future unrestricted public release of ALMA Monitor as a
+reusable citizen science reference implementation. It does not negate the
+existing closed operational pilot and does not claim United Nations endorsement.
+Current status is recorded in [Operational status](OPERATIONAL_STATUS.md).
 
 ## Public release boundary
 
@@ -47,10 +49,11 @@ Present in the `1.4.0-rc1` governance proposal:
 - automated tests for schemas, hash-bound legal governance, fail-closed public
   mode, and duplicate delivery protection.
 
-Still required before opening public field collection:
+Still required before opening unrestricted public field collection:
 
-- approval by the identified independent lawyer and final hash-bound release
-  activation;
+- exact binding of the deployed legal package to its applicable independent
+  review and final decision; the existing Legal Core v1 overlay already has
+  these records, while any changed governed package requires a new exact review;
 - an operator-specific privacy notice and enforced retention/deletion settings;
 - documented provenance and permitted use for every published spatial layer;
 - an English field collection guide;

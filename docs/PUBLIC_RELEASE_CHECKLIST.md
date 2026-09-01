@@ -1,6 +1,9 @@
 # Public release checklist
 
-The release owner records every item in the release pull request.
+This checklist governs a future unrestricted public field-collection service.
+It does not negate the existing closed operational pilot or the separately
+approved, exact hash-bound Legal Core v1 overlay. The release owner records
+every applicable item in the release pull request.
 
 - [x] `AUTHORS`, `NOTICE`, `CITATION.cff`, `LICENSE`, `LICENSE-CONTENT.md`,
   and `TRADEMARKS.md` are present, author-approved, and bound to exact SHA-256
@@ -10,15 +13,15 @@ The release owner records every item in the release pull request.
 - [ ] The release contains no credentials, real observations, field photos,
   volunteer identities, or unpublished precise locations.
 - [ ] All automated tests pass from a clean checkout.
-- [ ] The 32-object author review is approved and bound to its CSV SHA-256.
-- [ ] The 32-object independent-lawyer review is approved by a different
+- [x] The 32-object author review is approved and bound to its CSV SHA-256.
+- [x] The 32-object independent-lawyer review is approved by a different
   privately identified qualified person, with no-conflict declaration and
   confidential-attestation consent.
-- [ ] The independent review is attributable to the lawyer's Google account,
+- [x] The independent review is attributable to the lawyer's Google account,
   includes the completed attestation, and is bound to the exact exported CSV
   and private-attestation SHA-256 values. The public repository contains no
   identifying lawyer data or restricted Sheet URL. A GitHub account is optional.
-- [ ] The final public decision binds both review-record hashes.
+- [x] The final public decision binds both review-record hashes.
 - [ ] Every spatial layer has recorded provenance, version/date, permitted use,
   and an official source where one exists; a community-derived layer is not
   described as official.
@@ -33,6 +36,8 @@ The release owner records every item in the release pull request.
 - [ ] The production setting remains `controlled_pilot` until every preceding
   gate is complete.
 
-An unchecked item blocks the public release. A waiver must be an explicit,
-dated, public risk decision by the release owner; legal-review and personal-data
-gates cannot be waived through this checklist.
+An unchecked item blocks opening an unrestricted public field-collection
+service. It does not roll back a completed controlled-pilot deployment or the
+approved Legal Core overlay. A waiver must be an explicit, dated, public risk
+decision by the release owner; legal-review and personal-data gates cannot be
+waived through this checklist.

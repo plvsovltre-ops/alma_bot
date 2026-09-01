@@ -1,5 +1,11 @@
 # Email delivery
 
+> **Scope:** this page documents the ALMA Monitor v1 Cloud Run reference
+> worker. The current controlled Monitor 2 successor can deliver a complete
+> evidence dossier with controlled photo attachments. See
+> [Operational status](OPERATIONAL_STATUS.md). The v1 behavior below remains
+> part of the historical deployment record.
+
 ALMA Monitor uses `monitor@alma.eco` as the visible `From` and `Reply-To`
 address. The production transport is SMTP2GO over authenticated STARTTLS.
 

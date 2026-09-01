@@ -1,5 +1,18 @@
 # ALMA Monitor
 
+> **Operational status:** ALMA is a launched closed operational pilot, not an
+> unrestricted mass public service. This repository records the public ALMA
+> Monitor v1 lineage. ALMA Monitor 2 is the separately controlled successor.
+> See [Operational status and release lineage](docs/OPERATIONAL_STATUS.md).
+
+## Repository scope
+
+The implementation below documents the ALMA Monitor v1 Cloud Run reference
+worker and its public governance artifacts. It is valid evidence of the first
+operational system, but it is not a source mirror of the current private ALMA
+Monitor 2 runtime. Historical `app.py` and `laws/` materials are not included in
+the production image and must not be used for legal-reference selection.
+
 ALMA uses publicly accessible spatial data from open government and municipal
 geo-information resources. Each controlled dataset records its source URL,
 acquisition date and method, SHA-256 checksum, review interval, next review
@@ -14,7 +27,8 @@ legal boundary or cadastral extract. See
 > rules remain inactive until official boundary provenance is bound to the
 > release.
 
-ALMA Monitor receives new field incidents from a private Mergin Maps project.
+The ALMA Monitor v1 reference worker receives new field incidents from a
+private Mergin Maps project.
 It resolves a reviewed territory and authority route from orchard layers before
 Gemini is used. Gemini describes only observable facts. The recipient, subject,
 short request, territory name, and monitoring purpose come from the local
