@@ -17,7 +17,7 @@ label.
 | ALMA Monitor 1.3.0 | Released human-response and controlled legal-reference path | [Release v1.3.0](https://github.com/plvsovltre-ops/alma-monitor/releases/tag/v1.3.0), including an immutable image digest |
 | ALMA Monitor 1.3.1 | Released deterministic field-quality notices | [Release v1.3.1](https://github.com/plvsovltre-ops/alma-monitor/releases/tag/v1.3.1) |
 | Public Legal Core v1 overlay | Approved as an exact hash-bound package | [`decision.json`](../governance/public/kz/0.1.0-rc1/decision.json) and the confidentially attributable [`independent_review.json`](../governance/public/kz/0.1.0-rc1/independent_review.json) |
-| ALMA Monitor 2 | Next-generation controlled pilot and operational hardening | Operator-verified successor; its active private runtime is not reproduced by this v1 repository |
+| ALMA Monitor 2 | Running closed successor pilot and next-generation operational hardening | Its current server configuration and working data are private and are not reproduced by this v1 repository |
 | Unrestricted mass public service | Not claimed | The public-service gates remain in the [public release checklist](PUBLIC_RELEASE_CHECKLIST.md) |
 
 ## What “launched” means
@@ -45,10 +45,11 @@ pilot with the following boundary:
 - no model selection of law, article, topic, competent authority, or guilt;
 - no automatic submission to a state authority.
 
-This is an operator status statement, not a claim that the private Monitor 2
-runtime can be rebuilt from this repository. A future public Monitor 2 source
-release must identify its own exact source commit, image digest, governed data
-packages, and deployment boundary.
+This is an operator status statement: Monitor 2 is running in a controlled
+private pilot. The statement does not claim that its private runtime can be
+rebuilt from this v1 repository. A future public Monitor 2 source release must
+identify its own exact source commit, image digest, governed data packages, and
+deployment boundary.
 
 ## Repository scope
 
