@@ -51,6 +51,9 @@ survey edits.
 The monitor is designed to run as a scheduled Google Cloud Run Job. It does not
 need a personal computer after deployment.
 
+Platform-dependency boundaries and the status of open alternatives are recorded
+in [`docs/PLATFORM_INDEPENDENCE.md`](docs/PLATFORM_INDEPENDENCE.md).
+
 ## System boundary
 
 - **Mergin Maps Cloud** is the read-only source of field observations and media.
