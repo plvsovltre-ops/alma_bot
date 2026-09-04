@@ -3,7 +3,23 @@
 > **Operational status:** ALMA is a launched closed operational pilot, not an
 > unrestricted mass public service. This repository records the public ALMA
 > Monitor v1 lineage. ALMA Monitor 2 is the separately controlled successor.
-> See [Operational status and release lineage](docs/OPERATIONAL_STATUS.md).
+> See [Operational status and release lineage](docs/OPERATIONAL_STATUS.md) and
+> the latest [publication-safe operational evidence](docs/OPERATIONAL_EVIDENCE_2026-09-04.md).
+
+## Current controlled pilot
+
+As of 4 September 2026, the private ALMA Monitor 2 successor is running as a
+closed operational pilot. An operator-verified production check confirmed the
+scheduled evidence-to-dossier path, an active 20-card Legal Core, Russian and
+Kazakh presentation, bounded delivery, verified off-host backup, and active
+reliability and watchdog controls. The same check recorded no pending bounded
+backlog and no automatic submission to a state authority.
+
+The dated, privacy-safe record identifies the exact private runtime revision
+without publishing its source, field evidence, credentials, recipient
+addresses, or sensitive coordinates. The implementation in this repository
+remains the public v1 lineage and must not be represented as a source mirror of
+the current private successor.
 
 ## Repository scope
 

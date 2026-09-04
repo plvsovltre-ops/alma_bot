@@ -1,6 +1,6 @@
 # Operational status and release lineage
 
-Status checked: **1 September 2026**.
+Status checked: **4 September 2026**.
 
 ALMA is a launched controlled field system. It is not currently represented as
 an unrestricted mass public service. These statements describe different
@@ -17,7 +17,7 @@ label.
 | ALMA Monitor 1.3.0 | Released human-response and controlled legal-reference path | [Release v1.3.0](https://github.com/plvsovltre-ops/alma-monitor/releases/tag/v1.3.0), including an immutable image digest |
 | ALMA Monitor 1.3.1 | Released deterministic field-quality notices | [Release v1.3.1](https://github.com/plvsovltre-ops/alma-monitor/releases/tag/v1.3.1) |
 | Public Legal Core v1 overlay | Approved as an exact hash-bound package | [`decision.json`](../governance/public/kz/0.1.0-rc1/decision.json) and the confidentially attributable [`independent_review.json`](../governance/public/kz/0.1.0-rc1/independent_review.json) |
-| ALMA Monitor 2 | Running closed successor pilot and next-generation operational hardening | Its current server configuration and working data are private and are not reproduced by this v1 repository |
+| ALMA Monitor 2 | Running closed successor pilot with scheduled delivery and active reliability controls | [Publication-safe operational evidence, 4 September 2026](OPERATIONAL_EVIDENCE_2026-09-04.md); its current server configuration and working data remain private and are not reproduced by this v1 repository |
 | Unrestricted mass public service | Not claimed | The public-service gates remain in the [public release checklist](PUBLIC_RELEASE_CHECKLIST.md) |
 
 ## What “launched” means
@@ -42,8 +42,19 @@ pilot with the following boundary:
 - Russian or Kazakh presentation selected from the observation;
 - a complete evidence dossier, including controlled photo attachments;
 - neutral model-assisted description of visible circumstances only;
+- a bounded queue that retains additional observations and processes at most
+  one dossier in each scheduled run;
+- verified off-host backup, delivery-status monitoring, reliability inspection,
+  and a bounded watchdog for the scheduler;
 - no model selection of law, article, topic, competent authority, or guilt;
 - no automatic submission to a state authority.
+
+The latest production verification found the bounded backlog empty, recorded
+five successful pilot deliveries in the durable delivery state, and confirmed
+that all current production timers were scheduled. These are aggregate
+operational facts, not publication of any observation or recipient. The exact
+scope, timestamp and limits of this check are recorded in
+[`OPERATIONAL_EVIDENCE_2026-09-04.md`](OPERATIONAL_EVIDENCE_2026-09-04.md).
 
 This is an operator status statement: Monitor 2 is running in a controlled
 private pilot. The statement does not claim that its private runtime can be

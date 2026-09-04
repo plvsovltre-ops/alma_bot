@@ -2,6 +2,11 @@
 
 ## Unreleased — operational-status documentation
 
+- Adds a dated, publication-safe production record for the running private
+  Monitor 2 successor without publishing source, personal data or field
+  evidence.
+- Records the active reliability baseline: verified off-host backup,
+  delivery-status monitoring, scheduler watchdog and bounded one-dossier runs.
 - Records the distinction between the launched ALMA Monitor v1 closed pilot,
   the current Monitor 2 hardening, and a future unrestricted public service.
 - Marks `app.py` and `laws/` as historical pre-Legal-Core materials outside the
